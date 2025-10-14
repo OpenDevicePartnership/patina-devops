@@ -1,0 +1,44 @@
+# This workflow syncs GitHub labels to the integrating repository.
+#
+# The labels are declaratively defined in .github/Labels.yml.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+#
+# For more information, see:
+# https://github.com/EndBug/label-sync
+
+name: Label Sync Workflow
+
+on:
+  workflow_call:
+    inputs:
+      # Note: The caller can set a command to an empty string to skip that command
+      local_config_file:
+        description: 'Repo relative path to a repo-specific label config file'
+        default: ''
+        required: false
+        type: string
+
+jobs:
+  sync:
+    name: Sync
+    runs-on: ubuntu-latest
+
+    permissions:
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/Labels.yml
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync Labels
+        uses: EndBug/label-sync@v2
+        with:
+          config-file: |
+            https://raw.githubusercontent.com/OpenDevicePartnership/patina-devops/main/.github/Labels.yml
+            ${{ inputs.local_config_file }}
+          delete-other-labels: false
+          token: ${{ secrets.GITHUB_TOKEN }}
