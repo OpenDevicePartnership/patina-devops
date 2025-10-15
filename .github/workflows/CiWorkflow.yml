@@ -93,7 +93,7 @@ jobs:
         run: cargo make deny
 
       - name: Run cargo-clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo make clippy
         env:
           RUSTC_BOOTSTRAP: 1
 
