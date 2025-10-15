@@ -98,6 +98,7 @@ jobs:
         run: cargo make doc
 
       - name: Upload Coverage Report
+        if: github.repository_owner == 'OpenDevicePartnership'
         uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
