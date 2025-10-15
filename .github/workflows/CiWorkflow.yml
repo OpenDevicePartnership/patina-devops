@@ -9,11 +9,26 @@ name: CI
 on:
   workflow_call:
     inputs:
+      build-tasks:
+        description: "Comma-separated list of build tasks to run (e.g., 'build,build-x64,build-aarch64')"
+        required: false
+        default: ""
+        type: string
       mdbook-path:
         description: "Path to the mdbook to build"
         required: false
         default: ""
         type: string
+      run-cargo-vet:
+        description: "Whether to run cargo vet"
+        required: false
+        default: true
+        type: boolean
+      run-release-dry-run:
+        description: "Whether to run cargo release dry run"
+        required: false
+        default: true
+        type: boolean
 
 jobs:
   basic_ci:
@@ -41,6 +56,7 @@ jobs:
 
       - name: 🛠️ Download Rust Tools 🛠️
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+        if: ${{ inputs.mdbook-path != '' }}
 
       - name: 📖 Build Book 📖
         run: mdbook build ${{ inputs.mdbook-path }}
@@ -65,6 +81,7 @@ jobs:
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
 
       - name: Run cargo-vet
+        if: ${{ inputs.run-cargo-vet }}
         run: cargo make vet
 
       - name: Run cargo-fmt
@@ -81,7 +98,7 @@ jobs:
           RUSTC_BOOTSTRAP: 1
 
       - name: Crate Release Dry Run
-        if: ${{ !contains(github.event.pull_request.body, '(skip cargo release dry run)') }}
+        if: ${{ inputs.run-release-dry-run }}
         run: cargo release alpha --no-tag --workspace --no-push --allow-branch '*'
         env:
           RUSTC_BOOTSTRAP: 1
@@ -105,14 +122,16 @@ jobs:
           files: target/lcov.info
           fail_ci_if_error: true
 
-      - name: Build std
-        run: cargo make build
-
-      - name: Build X64
-        run: cargo make build-x64
-
-      - name: Build AArch64
-        run: cargo make build-aarch64
+      - name: Run Build Tasks
+        if: ${{ inputs.build-tasks != '' }}
+        run: |
+          IFS=',' read -ra TASKS <<< "${{ inputs.build-tasks }}"
+          for task in "${TASKS[@]}"; do
+            task=$(echo "$task" | xargs)
+            echo "Running cargo make $task"
+            cargo make $task
+          done
+        shell: bash
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
