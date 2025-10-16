@@ -1,0 +1,62 @@
+[
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "# Patina GitHub PR Dashboard\r\n\r\nThis notebook displays [Patina](https://opendevicepartnership.github.io/patina/) pull request status."
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "// list of patina repos\r\n$repos=repo:OpenDevicePartnership/patina repo:OpenDevicePartnership/patina-dxe-core-qemu repo:OpenDevicePartnership/patina-qemu repo:OpenDevicePartnership/patina-mtrr repo:OpenDevicePartnership/patina-paging repo:OpenDevicePartnership/patina-devops repo:OpenDevicePartnership/patina-readiness-tool repo:OpenDevicePartnership/patina-fw-patcher repo:OpenDevicePartnership/patina-edk2 repo:OpenDevicePartnership/patina-lzma-rs repo:OpenDevicePartnership/uefi-corosensei"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "📬 All Open Issues"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$repos is:open is:issue archived:false"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "All Open Issues with no labels"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$repos is:open is:issue archived:false no:label"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "All Open Issues with no assignee"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$repos is:open is:issue archived:false no:assignee"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "All Open Issues with needs-owner label"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$repos is:open is:issue archived:false label:state:needs-owner"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "All Open Issues marked stale"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$repos is:open is:issue archived:false label:state:stale"
+  }
+]

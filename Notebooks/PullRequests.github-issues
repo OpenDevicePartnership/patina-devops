@@ -1,0 +1,52 @@
+[
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "# Patina GitHub PR Dashboard\r\n\r\nThis notebook displays [Patina](https://opendevicepartnership.github.io/patina/) pull request status."
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "// list of patina repos\r\n$repos=repo:OpenDevicePartnership/patina repo:OpenDevicePartnership/patina-dxe-core-qemu repo:OpenDevicePartnership/patina-qemu repo:OpenDevicePartnership/patina-mtrr repo:OpenDevicePartnership/patina-paging repo:OpenDevicePartnership/patina-devops repo:OpenDevicePartnership/patina-readiness-tool repo:OpenDevicePartnership/patina-fw-patcher repo:OpenDevicePartnership/patina-edk2 repo:OpenDevicePartnership/patina-lzma-rs repo:OpenDevicePartnership/uefi-corosensei"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "📬 All Open PRs"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$repos is:open type:pr"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "📬 - 🤖 = Opened by Humans"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$repos is:open type:pr -author:app/dependabot -author:app/dependabot-preview"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "✅ All Approved PRs"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$repos is:open type:pr review:approved"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "🏁 All Completed PRs"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "// This needs to be bumped very occassionally (annually likely) to prevent\r\n// the maximum allowed number of results from being reached.\r\n$since=2025-10-01\r\n\r\n$repos is:closed type:pr sort:created-desc closed:>$since"
+  }
+]
