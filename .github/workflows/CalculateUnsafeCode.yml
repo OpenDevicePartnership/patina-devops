@@ -30,6 +30,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: OpenDevicePartnership/patina-devops
+          ref: personal/mikuback/add_unsafe_code_analysis_workflow
           path: patina-devops-scripts
           sparse-checkout: |
             .github/scripts
