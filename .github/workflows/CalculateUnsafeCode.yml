@@ -39,9 +39,10 @@ jobs:
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
 
       - name: Run unsafe code analysis
+        env:
+          RUSTC_BOOTSTRAP: 1
         run: |
-          count-unsafe . > unsafe_analysis_raw.json
-          python3 patina-devops-scripts/.github/scripts/analyze_unsafe_code.py unsafe_analysis_raw.json . --github-summary
+          python3 patina-devops-scripts/.github/scripts/analyze_unsafe_code_geiger.py
 
       - name: Update git credentials
         run: |
@@ -51,7 +52,8 @@ jobs:
       - name: Checkout the unsafe-code-badges branch
         run: |
           mkdir -p /tmp/badge-data
-          mv badge_*.json unsafe_analysis.json /tmp/badge-data/
+          cp -r unsafe-code-analysis/* /tmp/badge-data/
+          rm -rf unsafe-code-analysis
 
           git fetch origin
 
@@ -61,11 +63,13 @@ jobs:
             git checkout -b unsafe-code-badges
           fi
 
-          mv /tmp/badge-data/*.json .
+          # Remove the old data and copy the new data
+          rm -rf x86_64-unknown-uefi aarch64-unknown-uefi unsafe_analysis.* 2>/dev/null || true
+          cp -r /tmp/badge-data/* .
 
       - name: Push badge data to the unsafe-code-badges branch
         run: |
-          git add badge_*.json unsafe_analysis.json
-          git commit -m "Update unsafe code analysis badges" || echo "No changes to commit"
+          git add x86_64-unknown-uefi/ aarch64-unknown-uefi/ unsafe_analysis.* 2>/dev/null || true
+          git commit -m "Update unsafe code analysis badge data" || echo "No changes to commit"
 
           git push origin unsafe-code-badges
