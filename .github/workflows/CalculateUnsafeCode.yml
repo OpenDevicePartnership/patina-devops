@@ -16,21 +16,27 @@ jobs:
     name: Analyze Unsafe Code Usage
     runs-on: ubuntu-latest
 
-    permissions:
-      contents: write
-      actions: read
-
     steps:
+      - name: Generate Token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.PATINA_AUTOMATION_APPLICATION_ID }}
+          private-key: ${{ secrets.PATINA_AUTOMATION_APPLICATION_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
       - name: ✅ Checkout Repository ✅
         uses: actions/checkout@v5
         with:
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout patina-devops scripts
         uses: actions/checkout@v5
         with:
           repository: OpenDevicePartnership/patina-devops
           path: patina-devops-scripts
+          token: ${{ steps.app-token.outputs.token }}
           sparse-checkout: |
             .github/scripts
           sparse-checkout-cone-mode: false
@@ -68,6 +74,8 @@ jobs:
           cp -r /tmp/badge-data/* .
 
       - name: Push badge data to the unsafe-code-badges branch
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git add x86_64-unknown-uefi/ aarch64-unknown-uefi/ unsafe_analysis.* 2>/dev/null || true
           git commit -m "Update unsafe code analysis badge data" || echo "No changes to commit"
