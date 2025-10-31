@@ -14,11 +14,6 @@ on:
         required: false
         default: ""
         type: string
-      mdbook-path:
-        description: "Path to the mdbook to build"
-        required: false
-        default: ""
-        type: string
       run-cargo-vet:
         description: "Whether to run cargo vet"
         required: false
@@ -56,10 +51,6 @@ jobs:
 
       - name: 🛠️ Download Rust Tools 🛠️
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
-        if: ${{ inputs.mdbook-path != '' }}
-
-      - name: 📖 Build Book 📖
-        run: mdbook build ${{ inputs.mdbook-path }}
         if: ${{ inputs.mdbook-path != '' }}
 
   run:
