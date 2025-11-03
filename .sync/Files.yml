@@ -1,0 +1,564 @@
+# Specifies the files synced from Patina DevOps to other Patina repositories.
+#
+# This file is meant to ensure common configuration across Patina repos that is centralized in Patina DevOps.
+#
+# Files are contributed directly in Patina DevOps by the original author and then automatically synced after the PR
+# in Patina DevOps is merged by a bot to all of the repos specified in this file.
+#
+# To maintain consistency across Patina, always consider if a configuration/settings file is appropriate as
+# a common file in Patina DevOps or should be repo-specific.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+#
+# For more information, see:
+# https://github.com/BetaHuhn/repo-file-sync-action
+
+# Maintenance: Keep categories in ascending alphabetical order - easier to scan, identify duplicates, etc.
+
+group:
+
+###############################################################################
+# Configuration - Code Coverage
+###############################################################################
+
+# Code Coverage - Codecov Configuration
+  - files:
+    - source: .sync/codecov/codecov.yml
+      dest: codecov.yml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-readiness-tool
+
+###############################################################################
+# Configuration - Dependabot
+###############################################################################
+
+# Dependency Management - Dependabot Configuration
+  - files:
+    - source: .sync/dependabot/dependabot.yml
+      dest: .github/dependabot.yml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+###############################################################################
+# Configuration - Git
+###############################################################################
+
+# Git Configuration - Gitignore for Rust-Specific Repos
+  - files:
+    - source: .sync/git/.gitignore
+      dest: .gitignore
+      template:
+        ignored_files:
+          - '*.profraw'
+          - '**/pdbhelper.dll'
+          - '/target'
+          - 'Cargo.lock'
+          - 'docs/book/'
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-readiness-tool
+
+# Git Configuration - Gitignore for Repos with C Code
+  - files:
+    - source: .sync/git/.gitignore
+      dest: .gitignore
+      template:
+        ignored_files:
+          - '__pycache__/'
+          - '*_extdep/'
+          - '*.bak'
+          - '*.pyc'
+          - '*.vcxproj.user'
+          - '/**/AutoGen/**'
+          - '/**/Include/Generated/**'
+          - '/Build/'
+          - '/Conf/'
+          - '/target'
+          - 'BuildConfig.conf'
+          - 'tags/'
+    repos: |
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-qemu
+
+# Git Configuration - Gitattributes Template
+  - files:
+    - source: .sync/git/gitattributes_template.txt
+      dest: .gitattributes
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+###############################################################################
+# Configuration - Markdown Linting
+###############################################################################
+
+# Markdown Linting - Markdownlint Configuration
+  - files:
+    - source: .sync/markdownlint/.markdownlint.yaml
+      dest: .markdownlint.yaml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+###############################################################################
+# Configuration - Rust
+###############################################################################
+
+# Rust Configuration - Cargo Config
+  - files:
+    - source: .sync/rust/config.toml
+      dest: .cargo/config.toml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-readiness-tool
+
+# Rust Configuration - Cargo Deny
+  - files:
+    - source: .sync/rust/deny.toml
+      dest: deny.toml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-readiness-tool
+
+# Rust Configuration - Cargo Make
+# Todo: Add makefiles for other repos
+  - files:
+    - source: .sync/rust/Makefile.toml
+      dest: Makefile.toml
+    repos: |
+      OpenDevicePartnership/patina
+
+# Rust Configuration - Rust Toolchain
+  - files:
+    - source: .sync/rust/rust-toolchain.toml
+      dest: rust-toolchain.toml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# Rust Configuration - Rustfmt
+  - files:
+    - source: .sync/rust/rustfmt.toml
+      dest: rustfmt.toml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+###############################################################################
+# Templates - GitHub
+###############################################################################
+
+# GitHub Issue Templates - Bug Report
+  - files:
+    - source: .sync/github/bug_report.yml
+      dest: .github/ISSUE_TEMPLATE/bug_report.yml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# GitHub Issue Templates - Configuration
+  - files:
+    - source: .sync/github/config.yml
+      dest: .github/ISSUE_TEMPLATE/config.yml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# GitHub Issue Templates - Documentation Request
+  - files:
+    - source: .sync/github/documentation_request.yml
+      dest: .github/ISSUE_TEMPLATE/documentation_request.yml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# GitHub Issue Templates - Feature Request
+  - files:
+    - source: .sync/github/feature_request.yml
+      dest: .github/ISSUE_TEMPLATE/feature_request.yml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# GitHub Pull Request Template
+  - files:
+    - source: .sync/github/pull_request_template.md
+      dest: .github/pull_request_template.md
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# GitHub Issue Templates - Rustc Feature Gate
+  - files:
+    - source: .sync/github/rustc_feature_gate.yml
+      dest: .github/ISSUE_TEMPLATE/rustc_feature_gate.yml
+    repos: |
+      OpenDevicePartnership/patina
+
+# GitHub Issue Templates - Unstable Feature
+  - files:
+    - source: .sync/github/unstable_feature.yml
+      dest: .github/ISSUE_TEMPLATE/unstable_feature.yml
+    repos: |
+      OpenDevicePartnership/patina
+
+###############################################################################
+# Templates - Open Device Partnership (ODP)
+###############################################################################
+
+# Open Device Partnership - Code of Conduct
+  - files:
+    - source: .sync/odp/CODE_OF_CONDUCT.md
+      dest: CODE_OF_CONDUCT.md
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# Open Device Partnership - Contributing Guidelines
+  - files:
+    - source: .sync/odp/CONTRIBUTING.md
+      dest: CONTRIBUTING.md
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# Open Device Partnership - License
+  - files:
+    - source: .sync/odp/LICENSE
+      dest: LICENSE
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# Open Device Partnership - Security Policy
+  - files:
+    - source: .sync/odp/SECURITY.md
+      dest: SECURITY.md
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+###############################################################################
+# Workflows - Calculate Unsafe Code
+###############################################################################
+
+# Workflow - Calculate Unsafe Code
+# Note: This workflow is only enabled and synced to the patina repo at this time.
+#       Can be enabled for other repos as needed in the future.
+  - files:
+    - source: .sync/workflows/leaf/calculate-unsafe-code.yml
+      dest: .github/workflows/calculate-unsafe-code.yml
+      template: true
+    repos: |
+      OpenDevicePartnership/patina
+
+###############################################################################
+# Workflows - CI
+###############################################################################
+
+# CI Workflow: patina
+  - files:
+    - source: .sync/workflows/leaf/ci-workflow.yml
+      dest: .github/workflows/ci-workflow.yml
+      template:
+        build_tasks:
+          - "build"
+          - "build-x64"
+          - "build-aarch64"
+        run_cargo_vet: false
+        run_release_dry_run: >
+          ${{ !contains(github.event.pull_request.body, "- [x] Creates a new crate?") }}
+        test_mdbook: true
+        trigger_branches:
+          - "main"
+          - "major"
+          - "feature/**/*"
+    repos: |
+      OpenDevicePartnership/patina
+
+# CI Workflow: patina-dxe-core-qemu
+  - files:
+    - source: .sync/workflows/leaf/ci-workflow.yml
+      dest: .github/workflows/ci-workflow.yml
+      template:
+        build_tasks:
+          - "q35"
+          - "sbsa"
+          - "q35-release"
+          - "sbsa-release"
+        run_cargo_vet: false
+        run_release_dry_run: false
+        trigger_branches:
+          - "main"
+    repos: |
+      OpenDevicePartnership/patina-dxe-core-qemu
+
+# CI Workflow: patina-mtrr & patina-paging
+  - files:
+    - source: .sync/workflows/leaf/ci-workflow.yml
+      dest: .github/workflows/ci-workflow.yml
+      template:
+        build_tasks:
+          - "build"
+          - "build-x64"
+          - "build-aarch64"
+        run_cargo_vet: false
+        run_release_dry_run: true
+        trigger_branches:
+          - "main"
+    repos: |
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+
+###############################################################################
+# Workflows - Issue Triager
+###############################################################################
+
+# Workflow Configuration - Advanced Issue Labeler
+  - files:
+    - source: .sync/workflows/config/advanced-issue-labeler.yml
+      dest: .github/advanced-issue-labeler.yml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# Workflow - Triage Issues
+  - files:
+    - source: .sync/workflows/leaf/triage-issues.yml
+      dest: .github/workflows/triage-issues.yml
+      template: true
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+###############################################################################
+# Workflows - Labels
+###############################################################################
+
+# Workflow - Label Issues
+  - files:
+    - source: .sync/workflows/leaf/label-issues.yml
+      dest: .github/workflows/label-issues.yml
+      template: true
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# Workflow - Label Sync
+  - files:
+    - source: .sync/workflows/leaf/label-sync.yml
+      dest: .github/workflows/label-sync.yml
+      template: true
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+###############################################################################
+# Workflows - Release Management
+###############################################################################
+
+# Workflow - Publish mdbook
+  - files:
+    - source: .sync/workflows/leaf/publish-mdbook.yml
+      dest: .github/workflows/publish-mdbook.yml
+      template: true
+    repos: |
+      OpenDevicePartnership/patina
+
+# Workflow - Publish Release
+  - files:
+    - source: .sync/workflows/leaf/publish-release.yml
+      dest: .github/workflows/publish-release.yml
+      template: true
+    repos: |
+      OpenDevicePartnership/patina
+
+###############################################################################
+# Workflows - Release Drafter
+###############################################################################
+
+# Workflow Configuration - Release Draft Configuration
+  - files:
+    - source: .sync/workflows/config/release-draft-config.yml
+      dest: .github/release-draft-config.yml
+      template:
+        tag_prefix: 'patina-v'
+    repos: |
+      OpenDevicePartnership/patina
+
+  - files:
+    - source: .sync/workflows/config/release-draft-config.yml
+      dest: .github/release-draft-config.yml
+      template:
+        tag_prefix: 'v'
+    repos: |
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+# Workflow - Update Release Draft
+  - files:
+    - source: .sync/workflows/leaf/update-release-draft.yml
+      dest: .github/workflows/update-release-draft.yml
+      template: true
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-devops
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+###############################################################################
+# Workflows - Rust Versioning
+###############################################################################
+
+# Workflow - Rust Version Check
+  - files:
+    - source: .sync/workflows/leaf/rust-version-check.yml
+      dest: .github/workflows/rust-version-check.yml
+      template: true
+    repos: |
+      OpenDevicePartnership/patina

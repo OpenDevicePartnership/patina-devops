@@ -10,7 +10,7 @@
 #   - File Path Patterns: .github/workflows/label-issues/file-paths.yml
 #   - Regular Expressions for Pull Requests: .github/workflows/label-issues/regex-pull-requests.yml
 #
-# Ideally, curl (or wget) could be used to grab the files from mu_devops in this workflow file and once on
+# Ideally, curl (or wget) could be used to grab the files from patina-devops in this workflow file and once on
 # the local runner, the file path could simply be passed to the actions. That is not currently possible as
 # the actions are hardcoded to use the GitHub REST API to get the files in the local repo. If that is fixed
 # (tracked in https://github.com/github/issue-labeler/issues/39) then that approach can be used.
