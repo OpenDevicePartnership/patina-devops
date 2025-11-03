@@ -80,8 +80,6 @@ jobs:
   run:
     name: Rust CI
 
-    needs: [ basic_ci ]
-
     runs-on: ${{ matrix.os }}
 
     strategy:
