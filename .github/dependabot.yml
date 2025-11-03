@@ -1,0 +1,26 @@
+## @file
+# Dependabot configuration file for the Patina DevOps repository.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Please see the documentation for all dependabot configuration options:
+# https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+##
+
+version: 2
+
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      timezone: "America/Los_Angeles"
+      time: "06:00"
+    commit-message:
+      prefix: "GitHub Action"
+    labels:
+      - "type:dependencies"
+      - "type:dependabot"
+    rebase-strategy: "disabled"

@@ -1,0 +1,33 @@
+{#
+  Patina DevOps Dependency Version Control
+
+  =====================================================================================================================
+  About
+  =====================================================================================================================
+  This file centralizes definitions of versions placed into files synced from Patina DevOps to other repos before the
+  files are synced.
+
+  =====================================================================================================================
+  `patina_devops` Example:
+  =====================================================================================================================
+  `patina_devops` defines the git tag value of Patina DevOps that will be synced (via file sync) to repos that depend
+  on this repo. This updates the version of Patina DevOps used across all Patina repos.
+
+  Example flow:
+    1. Make a new Patina DevOps release (e.g. "v1.0.0")
+    2. Update this file to set `patina_devops` to "v1.0.0"
+
+  Step (2) causes the following automated actions to take place after the change is merged:
+    1. All sync files (e.g. a GitHub workflow file) that depend on this version get the new value substituted
+    2. All sync files with the substituted value are synced to their respective repos (PRs created with the change)
+    3. After the PRs in those repos are merged, they use the new version of Patina DevOps
+
+  ---------------------------------------------------------------------------------------------------------------------
+  Note: This file is not actually synced. It controls the version used in other files that are synced.
+
+  Copyright (c) Microsoft Corporation.
+  SPDX-License-Identifier: Apache-2.0
+#}
+
+{# The git ref value that files dependent on this repo will use. #}
+{% set patina_devops = "v0.2.0" %}

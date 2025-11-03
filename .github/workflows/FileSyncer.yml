@@ -1,0 +1,54 @@
+# This workflow syncs files and directories from Patina DevOps to other
+# Patina repositories.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+#
+# For more information, see:
+# https://github.com/BetaHuhn/repo-file-sync-action
+
+name: Sync Patina DevOps Files to Patina Repos
+
+on:
+  schedule:
+    # * is a special character in YAML so you have to quote this string
+    # Run daily at 8am UTC - https://crontab.guru/#0_9_*_*_*
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    name: Repo File Sync
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v5
+
+      - name: Generate Token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.PATINA_AUTOMATION_APPLICATION_ID }}
+          private-key: ${{ secrets.PATINA_AUTOMATION_APPLICATION_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Run GitHub File Sync
+        uses: BetaHuhn/repo-file-sync-action@v1
+        with:
+          COMMIT_AS_PR_TITLE: true
+          COMMIT_BODY: "Signed-off-by: Patina Automation Bot <patina@microsoft.com>"
+          COMMIT_EACH_FILE: false
+          COMMIT_PREFIX: "Repo File Sync:"
+          CONFIG_PATH: .sync/Files.yml
+          DRY_RUN: false
+          FORK: false
+          GH_INSTALLATION_TOKEN: ${{ steps.app-token.outputs.token }}
+          GIT_EMAIL: patina@microsoft.com
+          GIT_USERNAME: patina-fw
+          ORIGINAL_MESSAGE: true
+          OVERWRITE_EXISTING_PR: true
+          PR_BODY: |
+            🤖: View the [Repo File Sync Configuration File](https://github.com/OpenDevicePartnership/patina-devops/blob/main/.sync/Files.yml) to see how files are synced.
+          PR_LABELS: type:file-sync
+          SKIP_PR: false
