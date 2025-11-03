@@ -65,5 +65,6 @@ jobs:
         run: |
           # mdbook defaults to using the stable toolchain, ignoring any rust-toolchain file
           # The only way to change this is to invoke mdbook via rustup
-          # If we don't do this, examples are compiled with a different toolchain then our dependencies
+          # If we don't do this, examples are compiled with a different toolchain than our dependencies
+
           rustup run ${{ steps.channel.outputs.channel }} mdbook test ${{ inputs.mdbook-path }} ${{ steps.deps.outputs.args }}
