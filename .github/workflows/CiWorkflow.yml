@@ -49,6 +49,34 @@ jobs:
           config: .markdownlint.yml
           args: "**/*.md"
 
+      # Run the tests that require the rust tools, but not a specific OS.
+      - name: 🛠️ Download Rust Tools 🛠️
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+        if: ${{ inputs.mdbook-path != '' }}
+
+      - name: Run cargo-vet
+        if: ${{ inputs.run-cargo-vet }}
+        run: cargo make vet
+
+      - name: Run cargo-fmt
+        run: cargo fmt --all --check
+
+      - name: Run cargo-deny
+        run: cargo make deny
+
+      - name: Run cargo-clippy
+        run: cargo make clippy
+      
+      - name: Crate Release Dry Run
+        if: ${{ inputs.run-release-dry-run }}
+        run: cargo release alpha --no-tag --workspace --no-push --allow-branch '*'
+
+      - name: Test Documentation
+        run: cargo test --doc
+
+      - name: Build documentation
+        run: cargo make doc
+
   run:
     name: Rust CI
 
@@ -67,39 +95,8 @@ jobs:
       - name: 🛠️ Download Rust Tools 🛠️
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
 
-      - name: Run cargo-vet
-        if: ${{ inputs.run-cargo-vet }}
-        run: cargo make vet
-
-      - name: Run cargo-fmt
-        run: cargo fmt --all --check
-        env:
-          RUSTC_BOOTSTRAP: 1
-
-      - name: Run cargo-deny
-        run: cargo make deny
-
-      - name: Run cargo-clippy
-        run: cargo make clippy
-        env:
-          RUSTC_BOOTSTRAP: 1
-
-      - name: Crate Release Dry Run
-        if: ${{ inputs.run-release-dry-run }}
-        run: cargo release alpha --no-tag --workspace --no-push --allow-branch '*'
-        env:
-          RUSTC_BOOTSTRAP: 1
-
       - name: 🧪 Run Tests 🧪
         run: cargo make coverage
-
-      - name: Test Documentation
-        run: cargo test --doc
-        env:
-          RUSTC_BOOTSTRAP: 1
-
-      - name: Build documentation
-        run: cargo make doc
 
       - name: Upload Coverage Report
         if: github.repository_owner == 'OpenDevicePartnership'
