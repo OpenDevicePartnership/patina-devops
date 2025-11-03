@@ -52,7 +52,6 @@ jobs:
       # Run the tests that require the rust tools, but not a specific OS.
       - name: 🛠️ Download Rust Tools 🛠️
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
-        if: ${{ inputs.mdbook-path != '' }}
 
       - name: Run cargo-vet
         if: ${{ inputs.run-cargo-vet }}
