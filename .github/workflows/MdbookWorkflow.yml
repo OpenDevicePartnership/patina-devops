@@ -44,13 +44,13 @@ jobs:
       - name: Get channel / version from toolchain file
         id: channel
         run: |
-          if [ -f rust-toolchain ]; then
+          if [ -f rust-toolchain.toml ]; then
             CHANNEL=$(grep -E '^channel\s*=' rust-toolchain.toml | sed -E 's/.*=\s*"([^"]+)".*/\1/')
             echo "CHANNEL=$CHANNEL"
-            echo "::set-output name=channel::$CHANNEL"
+            echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
           else
             echo "CHANNEL=stable"
-            echo "::set-output name=channel::stable"
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
           fi
 
       # If a build-cmd is provided, run it to build the examples
@@ -58,9 +58,9 @@ jobs:
         id: deps
         if: ${{ inputs.build-cmd != '' }}
         run: |
-          eval ${{ inputs.build-cmd }}
-          echo "::set-output name=args::-L ${{ inputs.deps-dir }}"
-          
+          eval "${{ inputs.build-cmd }}"
+          echo "args=-L ${{ inputs.deps-dir }}" >> "$GITHUB_OUTPUT"
+
       - name: Test Book
         run: |
           # mdbook defaults to using the stable toolchain, ignoring any rust-toolchain file
