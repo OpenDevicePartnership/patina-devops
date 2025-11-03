@@ -1,0 +1,70 @@
+# A reusable CI workflow that builds and tests a mdbook.
+#
+##
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+##
+
+on:
+  workflow_call:
+    inputs:
+      mdbook-path:
+        description: "Path to the mdbook to build"
+        required: true
+        type: string
+      build-cmd:
+        description: "The build command to run if the mdbook has examples that need extern crates."
+        required: false
+        type: string
+      deps-dir:
+        description: "Directory to the crate(s) build artifacts created by build-cmd e.g. 'target/debug/deps/"
+        required: false
+        default: "target/debug/deps/"
+        type: string
+
+jobs:
+  mdbook:
+    name: Build and Test Mdbook
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ✅ Checkout Repository ✅
+        uses: actions/checkout@v5
+      
+      - name: 🛠️ Download Rust Tools 🛠️
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+        if: ${{ inputs.mdbook-path != '' }}
+      
+      - name: 📖 Build Book 📖
+        run: mdbook build ${{ inputs.mdbook-path }}
+        if: ${{ inputs.mdbook-path != '' }}
+      
+      # If a rust-toolchain file exists, grab the channel from it to use when building examples
+      - name: Get channel / version from toolchain file
+        id: channel
+        run: |
+          if [ -f rust-toolchain.toml ]; then
+            CHANNEL=$(grep -E '^channel\s*=' rust-toolchain.toml | sed -E 's/.*=\s*"([^"]+)".*/\1/')
+            echo "CHANNEL=$CHANNEL"
+            echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          else
+            echo "CHANNEL=stable"
+            echo "channel=stable" >> "$GITHUB_OUTPUT"
+          fi
+
+      # If a build-cmd is provided, run it to build the examples
+      - name: Generate Deps
+        id: deps
+        if: ${{ inputs.build-cmd != '' }}
+        run: |
+          eval "${{ inputs.build-cmd }}"
+          echo "args=-L ${{ inputs.deps-dir }}" >> "$GITHUB_OUTPUT"
+
+      - name: Test Book
+        run: |
+          # mdbook defaults to using the stable toolchain, ignoring any rust-toolchain file
+          # The only way to change this is to invoke mdbook via rustup
+          # If we don't do this, examples are compiled with a different toolchain than our dependencies
+
+          rustup run ${{ steps.channel.outputs.channel }} mdbook test ${{ inputs.mdbook-path }} ${{ steps.deps.outputs.args }}
