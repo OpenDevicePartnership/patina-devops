@@ -40,7 +40,7 @@ jobs:
         run: mdbook build ${{ inputs.mdbook-path }}
         if: ${{ inputs.mdbook-path != '' }}
       
-      # If a rust-toolchain file exists, grabs the channel from it to use when building examples
+      # If a rust-toolchain file exists, grab the channel from it to use when building examples
       - name: Get channel / version from toolchain file
         id: channel
         run: |
