@@ -66,6 +66,7 @@ group:
           - '/target'
           - 'Cargo.lock'
           - 'docs/book/'
+          - 'docs/target/'
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-dxe-core-qemu
