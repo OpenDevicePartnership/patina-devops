@@ -140,4 +140,4 @@ jobs:
       - name: Publish to crates.io
         if: steps.validate-version-updated.outputs.version-updated == 'true'
         run: |
-          cargo release -x --no-tag --no-push --workspace
+          cargo release -x --no-tag --no-push --workspace --no-confirm
