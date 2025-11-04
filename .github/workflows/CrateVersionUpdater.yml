@@ -64,7 +64,8 @@ jobs:
 
             const draft = releases.find(r => r.draft);
             if (!draft) {
-              core.setFailed("No draft release found.");
+              core.info("No draft release found.");
+              core.setOutput("tag", "");
               return;
             }
 
@@ -77,19 +78,23 @@ jobs:
             core.setOutput("tag", tag);
 
       - name: Update git credentials
+        if: steps.release_tag.outputs.tag != ''
         run: |
           git config --global user.name "patina-automation[bot]"
           git config --global user.email "patina@microsoft.com"
 
       - name: Checkout New Branch
+        if: steps.release_tag.outputs.tag != ''
         run: |
           git checkout -b "github-actions/release-version-update-${{ steps.release_tag.outputs.tag }}"
       
       - name: Run Cargo Release to Update Versions
+        if: steps.release_tag.outputs.tag != ''
         run: |
           cargo release version ${{ steps.release_tag.outputs.tag }} --execute --no-confirm
       
       - name: Push Changes
+        if: steps.release_tag.outputs.tag != ''
         run: |
           shopt -s globstar
           git add **/Cargo.toml
@@ -97,6 +102,7 @@ jobs:
           git push origin HEAD:github-actions/release-version-update --force
       
       - name: Create or Update Pull Request
+        if: steps.release_tag.outputs.tag != ''
         uses: actions/github-script@v7
         with:
           github-token: ${{ steps.app-token.outputs.token }}
