@@ -1,0 +1,141 @@
+# @file CrateVersionUpdater.yml
+#
+# A Github workflow that creates or updates a pull request to update the crate version numbers of local crates to match
+# the version specified in the current draft release tag.
+#
+##
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+##
+on:
+  workflow_call:
+    inputs:
+      ignore-prefix:
+        description: 'The prefix to ignore in the release tag (e.g., "patina-v").'
+        required: false
+        default: ''
+        type: string
+      create-pr:
+        description: 'Whether to create a new PR if one does not already exist.'
+        required: false
+        default: true
+        type: boolean
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Validate on main
+        if: github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+        run: |
+          echo "This workflow can only be triggered on the default branch."
+          exit 1
+
+      - name: ✅ Checkout Repository ✅
+        uses: actions/checkout@v5
+
+      - name: 🛠️ Download Rust Tools 🛠️
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+
+      - name: Generate Token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.PATINA_AUTOMATION_APPLICATION_ID }}
+          private-key: ${{ secrets.PATINA_AUTOMATION_APPLICATION_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Get Release Tag
+        id: release_tag
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const prefix = `${{ inputs.ignore-prefix }}`;
+
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+            });
+
+            const draft = releases.find(r => r.draft);
+            if (!draft) {
+              core.setFailed("No draft release found.");
+              return;
+            }
+
+            let tag = draft.tag_name;
+            if (prefix && tag.startsWith(prefix)) {
+              tag = tag.slice(prefix.length);
+            }
+
+            core.info(`Release Tag: ${tag}`);
+            core.setOutput("tag", tag);
+
+      - name: Update git credentials
+        run: |
+          git config --global user.name "patina-automation[bot]"
+          git config --global user.email "patina@microsoft.com"
+
+      - name: Checkout New Branch
+        run: |
+          git checkout -b "github-actions/release-version-update-${{ steps.release_tag.outputs.tag }}"
+      
+      - name: Run Cargo Release to Update Versions
+        run: |
+          cargo release version ${{ steps.release_tag.outputs.tag }} --execute --no-confirm
+      
+      - name: Push Changes
+        run: |
+          git add Cargo.toml **/Cargo.toml
+          git commit -m "Chore: Update crate versions to ${{ steps.release_tag.outputs.tag }}"
+          git push origin HEAD:github-actions/release-version-update --force
+      
+      - name: Create or Update Pull Request
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const defaultBranch = context.payload.repository.default_branch;
+            const headBranch = "github-actions/release-version-update";
+            const prTitle = `Chore: Update crate versions to ${{ steps.release_tag.outputs.tag }}`;
+
+            // Check if a PR already exists for the head branch
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head: `${context.repo.owner}:${headBranch}`,
+              state: 'open'
+            });
+
+            // If we are triggered for any reason and a PR already exists, just update the existing PR
+            if (prs.length > 0) {
+              const existingPr = prs[0];
+              console.log(`Pull request already exists: ${existingPr.number}`);
+
+              await github.rest.pulls.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: existingPr.number,
+                title: prTitle
+                });
+            // Only create a new PR if this workflow was triggered manually (workflow_call)
+            } else if (${{ inputs.create-pr }}) {
+              console.log("No existing pull request found. Creating a new one");
+              // Create a new pull request
+              const { data: pullRequest } = await github.rest.pulls.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: prTitle,
+                head: headBranch,
+                base: defaultBranch,
+                body: "An automatically created pull request to update the version of the repo due to a release.",
+                draft: false
+              });
+
+              console.log(`PR created: ${pullRequest.number}`);
+            }
