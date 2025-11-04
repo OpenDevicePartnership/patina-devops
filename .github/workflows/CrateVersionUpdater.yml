@@ -91,7 +91,8 @@ jobs:
       
       - name: Push Changes
         run: |
-          git add Cargo.toml **/Cargo.toml
+          shopt -s globstar
+          git add **/Cargo.toml
           git commit -m "Chore: Update crate versions to ${{ steps.release_tag.outputs.tag }}"
           git push origin HEAD:github-actions/release-version-update --force
       
