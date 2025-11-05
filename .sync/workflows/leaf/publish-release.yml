@@ -20,8 +20,9 @@
 name: Publish Release
 
 on:
-  release:
-    types: [published]
+  push:
+    branches: [ main ]
+    paths: [ Cargo.toml ]
 
 jobs:
   release:
