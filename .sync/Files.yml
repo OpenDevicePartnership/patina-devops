@@ -492,6 +492,24 @@ group:
 # Workflows - Release Management
 ###############################################################################
 
+# Workflow - Crate Version Update PR
+  - files:
+    - source: .sync/workflows/leaf/crate-version-update.yml
+      dest: .github/workflows/crate-version-update.yml
+      template:
+        ignore_prefix: 'patina-v'
+    repos: |
+      OpenDevicePartnership/patina
+
+  - files:
+    - source: .sync/workflows/leaf/crate-version-update.yml
+      dest: .github/workflows/crate-version-update.yml
+      template:
+        ignore_prefix: 'v'
+    repos: |
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+
 # Workflow - Publish mdbook
   - files:
     - source: .sync/workflows/leaf/publish-mdbook.yml
