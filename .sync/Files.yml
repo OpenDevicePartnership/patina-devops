@@ -376,8 +376,7 @@ group:
           - "build-x64"
           - "build-aarch64"
         run_cargo_vet: false
-        run_release_dry_run: >
-          ${{ !contains(github.event.pull_request.body, "- [x] Creates a new crate?") }}
+        run_release_dry_run: "${{ !contains(github.event.pull_request.body, '- [x] Creates a new crate?') }}"
         test_mdbook: true
         trigger_branches:
           - "main"

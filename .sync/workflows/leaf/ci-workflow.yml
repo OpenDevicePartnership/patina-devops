@@ -42,7 +42,7 @@ jobs:
     with:
       build-tasks: {{ build_tasks | join(",") }}
       run-cargo-vet: {{ run_cargo_vet }}
-      run-release-dry-run: {{ run_release_dry_run }}
+      run-release-dry-run: {{ run_release_dry_run | safe }}
     secrets: inherit
   {% if test_mdbook -%}
 {{"  "}}mdbook_docs_test:
