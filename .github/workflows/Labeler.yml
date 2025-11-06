@@ -53,3 +53,25 @@ jobs:
           enable-versioned-regex: 0
           repo-token: ${{ secrets.GITHUB_TOKEN }}
         if: github.event_name == 'pull_request' || github.event_name == 'pull_request_target'
+
+      - name: Label patina-automation[bot] PRs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            if (!context.payload.pull_request) {
+              core.info('No pull_request payload; skipping patina-automation[bot] labeling');
+              return;
+            }
+            const pr_author = context.payload.pull_request.user.login;
+            if (pr_author === 'patina-automation[bot]') {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: ['type:patina-bot']
+              });
+              core.info('Applied label "type:patina-bot" for patina-automation[bot]');
+            }
+
+
