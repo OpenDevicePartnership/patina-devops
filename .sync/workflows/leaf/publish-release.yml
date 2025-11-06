@@ -31,6 +31,3 @@ jobs:
     with:
       ignore-prefix: 'patina-v'
     secrets: inherit
-    permissions:
-      contents: write
-      actions: read
