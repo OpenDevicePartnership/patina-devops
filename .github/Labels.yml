@@ -153,13 +153,17 @@
   description: Notes from an organized meeting
   color: 'd9ee5d'
   aliases: []
-- name: type:submodules
-  description: Pull requests that update submodules
-  color: '000000'
+- name: type:patina-bot
+  description: Pull requests opened by patina-automation[bot]
+  color: '1f618d'
   aliases: []
 - name: type:question
   description: Further information is requested
   color: 'd876e3'
+  aliases: []
+- name: type:submodules
+  description: Pull requests that update submodules
+  color: '000000'
   aliases: []
 
 - name: urgency:low
