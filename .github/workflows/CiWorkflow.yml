@@ -19,11 +19,6 @@ on:
         required: false
         default: true
         type: boolean
-      run-release-dry-run:
-        description: "Whether to run cargo release dry run"
-        required: false
-        default: true
-        type: boolean
 
 jobs:
   basic_ci:
@@ -65,10 +60,6 @@ jobs:
 
       - name: Run cargo-clippy
         run: cargo make clippy
-      
-      - name: Crate Release Dry Run
-        if: ${{ inputs.run-release-dry-run }}
-        run: cargo release alpha --no-tag --workspace --no-push --allow-branch '*'
 
       - name: Test Documentation
         run: cargo test --doc
