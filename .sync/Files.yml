@@ -62,11 +62,11 @@ group:
       template:
         ignored_files:
           - '*.profraw'
-          - '**/pdbhelper.dll'
-          - '/target'
+          - '**/target'
           - 'Cargo.lock'
           - 'docs/book/'
           - 'docs/target/'
+          - '.vscode/launch.json'
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-dxe-core-qemu
