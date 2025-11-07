@@ -24,6 +24,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
+    if: github.repository_owner == 'OpenDevicePartnership'
 
     permissions:
       contents: write
@@ -87,12 +88,12 @@ jobs:
         if: steps.release_tag.outputs.tag != ''
         run: |
           git checkout -b "github-actions/release-version-update-${{ steps.release_tag.outputs.tag }}"
-      
+
       - name: Run Cargo Release to Update Versions
         if: steps.release_tag.outputs.tag != ''
         run: |
           cargo release version ${{ steps.release_tag.outputs.tag }} --execute --no-confirm
-      
+
       - name: Push Changes
         if: steps.release_tag.outputs.tag != ''
         run: |
@@ -100,7 +101,7 @@ jobs:
           git add **/Cargo.toml
           git commit -m "Chore: Update crate versions to ${{ steps.release_tag.outputs.tag }}"
           git push origin HEAD:github-actions/release-version-update --force
-      
+
       - name: Create or Update Pull Request
         if: steps.release_tag.outputs.tag != ''
         uses: actions/github-script@v8

@@ -12,6 +12,7 @@ on:
 jobs:
   check-rust-version:
     runs-on: ubuntu-latest
+    if: github.repository_owner == 'OpenDevicePartnership'
 
     steps:
       - name: Generate Token

@@ -15,6 +15,7 @@ jobs:
   analyze-unsafe-code:
     name: Analyze Unsafe Code Usage
     runs-on: ubuntu-latest
+    if: github.repository_owner == 'OpenDevicePartnership'
 
     steps:
       - name: Generate Token
