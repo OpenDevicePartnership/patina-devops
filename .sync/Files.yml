@@ -459,6 +459,10 @@ group:
     - source: .sync/workflows/leaf/label-issues.yml
       dest: .github/workflows/label-issues.yml
       template: true
+    - source: .sync/workflows/config/label-issues/file-paths.yml
+      dest: .github/workflows/label-issues/file-paths.yml
+    - source: .sync/workflows/config/label-issues/regex-pull-requests.yml
+      dest: .github/workflows/label-issues/regex-pull-requests.yml
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-dxe-core-qemu
