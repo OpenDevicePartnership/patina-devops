@@ -20,6 +20,7 @@ jobs:
   sync:
     name: Repo File Sync
     runs-on: ubuntu-latest
+    if: github.repository_owner == 'OpenDevicePartnership'
 
     steps:
       - name: Checkout Repository
