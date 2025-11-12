@@ -203,7 +203,37 @@ group:
 # Rust Configuration - Cargo Make
 # Todo: Add makefiles for other repos
   - files:
-    - source: .sync/rust/Makefile.toml
+    - source: .sync/rust/Makefiles/Makefile-patina-dxe-core-qemu.toml
+      dest: Makefile.toml
+    repos: |
+      OpenDevicePartnership/patina-dxe-core-qemu
+
+  - files:
+    - source: .sync/rust/Makefiles/Makefile-patina-mtrr.toml
+      dest: Makefile.toml
+    repos: |
+      OpenDevicePartnership/patina-mtrr
+
+  - files:
+    - source: .sync/rust/Makefiles/Makefile-patina-paging.toml
+      dest: Makefile.toml
+    repos: |
+      OpenDevicePartnership/patina-paging
+
+  - files:
+    - source: .sync/rust/Makefiles/Makefile-patina-qemu.toml
+      dest: Makefile.toml
+    repos: |
+      OpenDevicePartnership/patina-qemu
+
+  - files:
+    - source: .sync/rust/Makefiles/Makefile-patina-readiness-tool.toml
+      dest: Makefile.toml
+    repos: |
+      OpenDevicePartnership/patina-readiness-tool
+
+  - files:
+    - source: .sync/rust/Makefiles/Makefile-patina.toml
       dest: Makefile.toml
     repos: |
       OpenDevicePartnership/patina

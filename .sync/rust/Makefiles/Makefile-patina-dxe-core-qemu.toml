@@ -1,0 +1,474 @@
+# NOTE: This file is automatically synchronized from Patina DevOps. Update the original file there
+#       instead of the file in this repo.
+#
+# - Patina DevOps Repo: https://github.com/OpenDevicePartnership/patina-devops
+# - File Sync Settings: https://github.com/OpenDevicePartnership/patina-devops/blob/main/.sync/Files.yml
+
+[config]
+default_to_workspace = false
+
+[env]
+NO_STD_FLAGS = "--profile ${RUSTC_PROFILE} -Zbuild-std=core,compiler_builtins,alloc -Zbuild-std-features=compiler-builtins-mem -Zunstable-options --timings=html"
+STD_FLAGS = "--profile ${RUSTC_PROFILE} --features std"
+TEST_FLAGS = { value = "", condition = { env_not_set = ["TEST_FLAGS"] } }
+COV_FLAGS = { value = "--workspace --profile test --ignore-filename-regex .*test.*", condition = { env_not_set = ["COV_FLAGS"] } }
+RUSTDOCFLAGS = "-D warnings -D missing_docs"
+
+[env.development]
+RUSTC_PROFILE = "dev"
+
+[env.release]
+RUSTC_PROFILE = "release"
+
+[tasks.individual-package-targets]
+script_runner = "@duckscript"
+script = '''
+args = get_env CARGO_MAKE_TASK_ARGS
+
+if is_empty ${args}
+  exit
+end
+
+1 = array ""
+2 = split ${args} ,
+3 = array_concat ${1} ${2}
+joined_args = array_join ${3} " -p "
+release ${1}
+release ${2}
+release ${3}
+
+joined_args = trim ${joined_args}
+set_env INDIVIDUAL_PACKAGE_TARGETS ${joined_args}
+release ${joined_args}
+'''
+
+[tasks.build-bin]
+description = """Builds the standard library DXE core.
+
+Customizations:
+    -p [development|release]: Builds in debug or release. Default: development
+
+Example:
+    `cargo make build-bin`
+    `cargo make -p release build-bin`
+"""
+clear = true
+command = "cargo"
+args = ["build", "@@split(STD_FLAGS, )", "--example", "dxe_core_std"]
+
+[tasks.check_no_std]
+description = "Checks rust code for no_std build errors with results."
+private = true
+command = "cargo"
+args = ["check", "--target", "x86_64-unknown-uefi", "@@split(NO_STD_FLAGS, )", "@@split(CARGO_MAKE_TASK_ARGS, )"]
+
+[tasks.check_std]
+description = "Checks rust code for std build errors with results."
+private = true
+command = "cargo"
+args = ["check", "@@split(STD_FLAGS, )", "@@split(CARGO_MAKE_TASK_ARGS, )"]
+
+[tasks.check_tests]
+description = "Checks rust test code for build errors with results."
+private = true
+command = "cargo"
+args = ["test", "--no-run", "@@split(CARGO_MAKE_TASK_ARGS, )"]
+
+
+[tasks.check]
+description = "Checks rust code for errors. Example `cargo make check`"
+clear = true
+run_task = [{ name = ["check_no_std", "check_std", "check_tests"], parallel = true }]
+
+[tasks.test]
+description = "Builds all rust tests in the workspace. Example `cargo make test`"
+clear = true
+command = "cargo"
+args = ["test", "@@split(INDIVIDUAL_PACKAGE_TARGETS, )", "@@split(TEST_FLAGS, )"]
+dependencies = ["individual-package-targets"]
+
+[tasks.coverage-collect]
+description = "Run tests and collect coverage data without generating reports."
+install_crate = false
+clear = true
+command = "cargo"
+args = ["llvm-cov", "@@split(COV_FLAGS, )", "--no-report"]
+dependencies = ["individual-package-targets"]
+
+[tasks.coverage-lcov]
+description = "Generate an LCOV coverage report from collected data."
+install_crate = false
+clear = true
+command = "cargo"
+args = ["llvm-cov", "report", "--lcov", "--output-path", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/lcov.info"]
+
+[tasks.coverage-html]
+description = "Generate an HTML coverage report from collected data."
+install_crate = false
+clear = true
+command = "cargo"
+args = ["llvm-cov", "report", "--html", "--output-dir", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/coverage"]
+
+[tasks.coverage]
+description = "Build and run all tests and calculate coverage (runs test once and generates LCOV and HTML reports)."
+dependencies = ["coverage-collect", "coverage-lcov", "coverage-html"]
+clear = true
+
+[tasks.coverage-filter]
+description = "Generates the coverage filter to ignore coverage data for other packages."
+private = true
+script_runner = "@duckscript"
+script = '''
+package = get_env PACKAGE
+members = get_env CARGO_MAKE_CRATE_WORKSPACE_MEMBERS
+
+1 = split ${members} ,
+
+2 = array
+for member in ${1}
+    if not contains ${member} ${package}
+        array_push ${2} ${member}
+    end
+
+
+end
+
+joined = array_join ${2} "|"
+
+set_env PACKAGE_COVERAGE_FILTER ${joined}
+release ${1}
+release ${2}
+release ${joined_args}
+release ${joined}
+'''
+
+[tasks.coverage-fail-package]
+private = true
+install_crate = false
+description = """Generates Code coverage for $(PACKAGE) and fails the build if coverage is below 80%."""
+dependencies = ["coverage-filter"]
+command = "cargo"
+args = ["llvm-cov", "--package", "${PACKAGE}", "--fail-under-lines", "80", "--ignore-filename-regex", "${PACKAGE_COVERAGE_FILTER}"]
+
+[tasks.coverage-fail]
+description = """Runs coverage on one or all packages and fails if coverage is below 80%.
+
+Examples:
+    `cargo make coverage-fail`
+    `cargo make coverage-fail patina_dxe_core`
+"""
+script_runner = "@duckscript"
+script = '''
+1 = get_env CARGO_MAKE_CRATE_WORKSPACE_MEMBERS
+2 = split ${1} ,
+3 = get_env CARGO_MAKE_TASK_ARGS
+
+if not is_empty ${3}
+    set_env PACKAGE ${3}
+    cm_run_task coverage-fail-package
+else
+    for member in ${2}
+        4 = split ${member} /
+        5 = array_pop ${4}
+        set_env PACKAGE ${5}
+        cm_run_task coverage-fail-package
+        release ${4}
+        release ${5}
+    end
+endif
+
+release ${1}
+release ${2}
+release ${3}
+'''
+
+[tasks.patch]
+private = true
+script_runner = "@duckscript"
+script = '''
+1 = get_env CARGO_MAKE_TASK_ARGS
+
+# Find all arguments after --crate-patch and collect them
+patch_repos = array
+leave_patch = set false
+if not is_empty ${1}
+    args = split ${1} ";"
+    found_patch_flag = set false
+    for arg in ${args}
+        arg = trim ${arg}
+        if eq ${arg} "--crate-patch"
+            found_patch_flag = set true
+        elseif eq ${arg} "--leave-patch"
+            leave_patch = set true
+        elseif ${found_patch_flag}
+            array_push ${patch_repos} ${arg}
+            found_patch_flag = set false
+        end
+    end
+end
+
+needs_patch = not array_is_empty ${patch_repos}
+patch_tag = set [patch.crates-io]
+
+if ${needs_patch}
+    # Remove existing patch section from Cargo.toml
+    # Create a backup to revert to
+    cp Cargo.toml Cargo.toml.bak
+
+    # Read Cargo.toml lines
+    lines = readfile Cargo.toml
+    lines = split ${lines} "\n"
+    new_lines = array
+    in_patch = set false
+
+    for line in ${lines}
+        trimmed = trim ${line}
+        if starts_with ${trimmed} ${patch_tag}
+            in_patch = set true
+        else if ${in_patch}
+            if starts_with ${trimmed} "["
+                in_patch = set false
+            end
+        end
+        if not ${in_patch}
+            array_push ${new_lines} ${line}
+        end
+    end
+
+    # Write filtered lines back to Cargo.toml
+    write_lines = array_join ${new_lines} "\n"
+    writefile Cargo.toml ${write_lines}
+    release ${lines}
+    release ${new_lines}
+end
+
+if ${needs_patch}
+    patch_str = set ${patch_tag}
+    for repo in ${patch_repos}
+        echo "Processing repo: ${repo}"
+        if not is_path_exists ${repo}/Cargo.toml
+            echo "Path ${repo}/Cargo.toml does not exist."
+            exit 1
+        end
+
+        output = exec cargo metadata --format-version 1 --no-deps --manifest-path ${repo}/Cargo.toml
+        if not eq ${output.code} 0
+            echo "Error running cargo metadata on ${repo}"
+            exit 1
+        end
+
+        metadata = json_parse --collection ${output.stdout}
+        packages = map_get ${metadata} packages
+
+        for package in ${packages}
+            name = map_get ${package} name
+            path = map_get ${package} id
+
+            # Unfortunately, the path formats are different between Windows and Linux environments
+            # path+file:// is added to Linux paths and path+file:/// is added to Windows paths
+            if is_windows
+                path = replace ${path} "path+file:///" ""
+            else
+                path = replace ${path} "path+file://" ""
+            end
+            temp = split ${path} "#"
+            path = array_get ${temp} 0
+
+            patch_str = concat ${patch_str} \n${name} = { path = \"${path}\"}
+            release ${name}
+            release ${path}
+            release ${temp}
+        end
+
+        release ${packages}
+        release ${metadata}
+        release ${output}
+    end
+end
+
+if ${needs_patch}
+    # Patch the Cargo.toml file
+    appendfile Cargo.toml ${patch_str}
+end
+
+# Execute the actual cargo command
+cm_run_task build-efi
+
+if ${needs_patch}
+    if not ${leave_patch}
+        # Revert the Cargo.toml file to the original state
+        mv Cargo.toml.bak Cargo.toml
+    else
+        # Remove the backup since we're leaving the patch
+        rm Cargo.toml.bak
+    end
+end
+
+exit 0
+'''
+
+[tasks.build-efi-exec]
+command = "cargo"
+args = ["build", "--bin", "${CARGO_BIN_NAME}", "--target", "${CARGO_BIN_TARGET}", "--features", "${COMBINED_FEATURES}", "@@split(NO_STD_FLAGS, )"]
+
+[tasks.build-efi-prepare-features]
+script_runner = "@duckscript"
+script = '''
+make_args = get_env CARGO_MAKE_TASK_ARGS
+base_features = get_env CARGO_BIN_FEATURES
+
+# Default to base features
+combined_features = set ${base_features}
+
+# Find argument after --features and collect it
+features = set ""
+if not is_empty ${make_args}
+    args = split ${make_args} ";"
+    found_feature_flag = set false
+    for arg in ${args}
+        arg = trim ${arg}
+        if eq ${arg} "--features"
+            found_feature_flag = set true
+        elseif ${found_feature_flag}
+            features = set ${arg}
+            found_feature_flag = set false
+        end
+    end
+end
+
+if is_empty ${base_features}
+    combined_features = set ${features}
+else
+    combined_features = concat ${base_features} "," ${features}
+end
+
+# Set the combined features for the build-efi-exec task
+set_env COMBINED_FEATURES ${combined_features}
+'''
+
+[tasks.build-efi]
+dependencies = ["build-efi-prepare-features"]
+run_task = "build-efi-exec"
+
+[tasks.q35]
+description = """Builds the DEBUG Q35 UEFI firmware."""
+env = { CARGO_BIN_NAME = "qemu_q35_dxe_core", "RUSTC_PROFILE" = "dev", CARGO_BIN_TARGET = "x86_64-unknown-uefi", CARGO_BIN_FEATURES = "x64,build_debugger" }
+run_task = "patch"
+
+[tasks.q35-release]
+description = """Builds the RELEASE Q35 UEFI firmware."""
+env = { CARGO_BIN_NAME = "qemu_q35_dxe_core", "RUSTC_PROFILE" = "release", CARGO_BIN_TARGET = "x86_64-unknown-uefi", CARGO_BIN_FEATURES = "x64" }
+run_task = "patch"
+
+[tasks.sbsa]
+description = """Builds the DEBUG SBSA UEFI firmware."""
+env = { CARGO_BIN_NAME = "qemu_sbsa_dxe_core", "RUSTC_PROFILE" = "dev", CARGO_BIN_TARGET = "aarch64-unknown-uefi", CARGO_BIN_FEATURES = "aarch64,build_debugger" }
+run_task = "patch"
+
+[tasks.sbsa-release]
+description = """Builds the RELEASE SBSA UEFI firmware."""
+env = { CARGO_BIN_NAME = "qemu_sbsa_dxe_core", "RUSTC_PROFILE" = "release", CARGO_BIN_TARGET = "aarch64-unknown-uefi", CARGO_BIN_FEATURES = "aarch64" }
+run_task = "patch"
+
+[tasks.doc]
+description = "Builds all rust documentation in the workspace. Example `cargo make doc`"
+command = "cargo"
+args = ["doc", "@@split(INDIVIDUAL_PACKAGE_TARGETS, )", "--features", "doc"]
+
+[tasks.doc-open]
+description = "Builds all rust documentation in the workspace and opens the documentation Example `cargo make doc-open`"
+command = "cargo"
+args = ["doc", "@@split(INDIVIDUAL_PACKAGE_TARGETS, )", "--features", "doc", "--open"]
+
+[tasks.clippy]
+description = "Run cargo clippy."
+clear = true
+command = "cargo"
+args = ["clippy", "--", "-D", "warnings"]
+
+[tasks.fmt]
+description = "Run cargo format."
+clear = true
+command = "cargo"
+args = ["fmt", "--all"]
+
+[tasks.cspell]
+description = "Run cspell for spell checking." # npm install -g cspell@latest
+script = "cspell --quiet  --no-progress --no-summary  --dot --gitignore -e \"{.git/**,.github/**,.vscode/**}\" ."
+
+[tasks.deny]
+description = "Run cargo deny."
+install_crate = false
+clear = true
+command = "cargo"
+args = ["deny", "check"]
+
+[tasks.bloat-q35-exec]
+private = true
+command = "cargo"
+args = ["bloat", "--target", "x86_64-unknown-uefi", "--features", "x64", "--bin", "qemu_q35_dxe_core", "--profile", "${RUSTC_PROFILE}", "-Zbuild-std=core,compiler_builtins,alloc", "-Zbuild-std-features=compiler-builtins-mem", "-Zunstable-options", "@@split(CLEANED_ARGS, )"]
+
+[tasks.bloat-q35]
+description = "Run cargo bloat for q35 (x86_64-unknown-uefi). Examples: `cargo make bloat-q35 -- --crates`, `cargo make bloat-q35 -- --crates -n 40`."
+script_runner = "@duckscript"
+script = '''
+args = get_env CARGO_MAKE_TASK_ARGS
+
+# Clean up the args by replacing semicolons with spaces
+if not is_empty ${args}
+    clean_args = replace ${args} ";;--" " --"
+    clean_args = replace ${clean_args} ";;" " "
+    clean_args = replace ${clean_args} ";" " "
+    # Remove leading/trailing whitespace and -- prefix
+    clean_args = trim ${clean_args}
+    clean_args = replace ${clean_args} "-- " ""
+    set_env CLEANED_ARGS ${clean_args}
+else
+    set_env CLEANED_ARGS ""
+end
+
+cm_run_task bloat-q35-exec
+'''
+
+[tasks.bloat-sbsa-exec]
+private = true
+command = "cargo"
+args = ["bloat", "--target", "aarch64-unknown-uefi", "--features", "aarch64", "--bin", "qemu_sbsa_dxe_core", "--profile", "${RUSTC_PROFILE}", "-Zbuild-std=core,compiler_builtins,alloc", "-Zbuild-std-features=compiler-builtins-mem", "-Zunstable-options", "@@split(CLEANED_ARGS, )"]
+
+[tasks.bloat-sbsa]
+description = "Run cargo bloat for sbsa (aarch64-unknown-uefi). Examples: `cargo make bloat-sbsa -- --crates`, `cargo make bloat-sbsa -- --crates -n 40`."
+script_runner = "@duckscript"
+script = '''
+args = get_env CARGO_MAKE_TASK_ARGS
+
+# Clean up the args by replacing semicolons with spaces
+if not is_empty ${args}
+    clean_args = replace ${args} ";;--" " --"
+    clean_args = replace ${clean_args} ";;" " "
+    clean_args = replace ${clean_args} ";" " "
+    # Remove leading/trailing whitespace and -- prefix
+    clean_args = trim ${clean_args}
+    clean_args = replace ${clean_args} "-- " ""
+    set_env CLEANED_ARGS ${clean_args}
+else
+    set_env CLEANED_ARGS ""
+end
+
+cm_run_task bloat-sbsa-exec
+'''
+
+[tasks.all]
+description = "Run all tasks for PR readiness."
+dependencies = [
+    "deny",
+    "clippy",
+    "cspell",
+    "q35",
+    "sbsa",
+    "q35-release",
+    "sbsa-release",
+    "test",
+    "coverage",
+    "fmt",
+    "doc",
+]
