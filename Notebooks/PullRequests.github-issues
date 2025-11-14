@@ -7,7 +7,7 @@
   {
     "kind": 2,
     "language": "github-issues",
-    "value": "// list of patina repos\r\n$repos=repo:OpenDevicePartnership/patina repo:OpenDevicePartnership/patina-dxe-core-qemu repo:OpenDevicePartnership/patina-qemu repo:OpenDevicePartnership/patina-mtrr repo:OpenDevicePartnership/patina-paging repo:OpenDevicePartnership/patina-devops repo:OpenDevicePartnership/patina-readiness-tool repo:OpenDevicePartnership/patina-fw-patcher repo:OpenDevicePartnership/patina-edk2 repo:OpenDevicePartnership/patina-lzma-rs repo:OpenDevicePartnership/uefi-corosensei"
+    "value": "// list of patina repos\r\n$repos=repo:OpenDevicePartnership/patina repo:OpenDevicePartnership/patina-dxe-core-qemu repo:OpenDevicePartnership/patina-qemu repo:OpenDevicePartnership/patina-mtrr repo:OpenDevicePartnership/patina-paging repo:OpenDevicePartnership/patina-devops repo:OpenDevicePartnership/patina-apps repo:OpenDevicePartnership/patina-readiness-tool repo:OpenDevicePartnership/patina-fw-patcher repo:OpenDevicePartnership/patina-edk2 repo:OpenDevicePartnership/patina-lzma-rs repo:OpenDevicePartnership/uefi-corosensei"
   },
   {
     "kind": 1,
