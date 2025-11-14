@@ -168,13 +168,39 @@ group:
   - files:
     - source: .sync/rust/deny.toml
       dest: deny.toml
+      template:
+        denied_crates:
+          - '{ crate = "tiny-keccak", reason = "Not updated in 5 years. Use alternative." }'
+        ignored_rust_security_advisories:
+          # Note: `paste` is currently used in `gdbstub` brought in by `patina_debugger`
+          - '{ id = "RUSTSEC-2024-0436", reason = "Macros for token pasting. No longer maintained per readme. Consider alternatives." }'
+        license_exceptions:
+          - '{ allow = ["0BSD"], crate = "managed" }'
+          - '{ allow = ["BSD-3-Clause"], crate = "alloc-no-stdlib" }'
+          - '{ allow = ["Unicode-3.0"], crate = "unicode-ident" }'
+        skipped_crates:
+          - '{ crate = "bitflags", reason = "Need https://github.com/gz/rust-x86/pull/150 to be merged into rust-x86." }'
     repos: |
       OpenDevicePartnership/patina
-      OpenDevicePartnership/patina-apps
       OpenDevicePartnership/patina-dxe-core-qemu
-      OpenDevicePartnership/patina-fw-patcher
       OpenDevicePartnership/patina-mtrr
       OpenDevicePartnership/patina-paging
+
+  - files:
+    - source: .sync/rust/deny.toml
+      dest: deny.toml
+      template:
+        denied_crates:
+          - '{ crate = "tiny-keccak", reason = "Not updated in 5 years. Use alternative." }'
+        ignored_rust_security_advisories:
+        license_exceptions:
+          - '{ allow = ["Unicode-3.0"], crate = "unicode-ident" }'
+          - '{ allow = ["MPL-2.0"], crate = "colored" }'
+          - '{ allow = ["MPL-2.0"], crate = "ucs2" }'
+        skipped_crates:
+          - '{ crate = "bitflags", reason = "Need https://github.com/gz/rust-x86/pull/150 to be merged into rust-x86." }'
+          - '{ crate = "windows-sys", reason = "https://crates.io/crates/colored latest (v3.0.0) uses 0.59. https://crates.io/crates/anstyle-query latest (v1.1.5) uses 0.61." }'
+    repos: |
       OpenDevicePartnership/patina-readiness-tool
 
 # Rust Configuration - Cargo Make
