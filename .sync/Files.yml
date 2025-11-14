@@ -148,22 +148,11 @@ group:
         include_uefi_target_rules: false
     repos: |
       OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-apps
       OpenDevicePartnership/patina-fw-patcher
       OpenDevicePartnership/patina-mtrr
       OpenDevicePartnership/patina-paging
-
-  # Note: This repo contains several UEFI applications, so a generic PDB name
-  #       is used.
-  - files:
-    - source: .sync/rust/config.toml
-      dest: .cargo/config.toml
-      template:
-        include_uefi_target_rules: true
-        subsystem_type: efi_application
-        aarch64_pdb_name: patina_app.pdb
-        x86_64_pdb_name: patina_app.pdb
-    repos: |
-      OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-readiness-tool
 
   - files:
     - source: .sync/rust/config.toml
@@ -174,18 +163,6 @@ group:
         x86_64_pdb_name: qemu_q35_dxe_core.pdb
     repos: |
       OpenDevicePartnership/patina-dxe-core-qemu
-
-  # Note: The UEFI shell application capture tool will have a different name.
-  #       This rule is specifically matching the DXE Core replacement binary.
-  - files:
-    - source: .sync/rust/config.toml
-      dest: .cargo/config.toml
-      template:
-        include_uefi_target_rules: true
-        aarch64_pdb_name: qemu_dxe_readiness_capture.pdb
-        x86_64_pdb_name: qemu_dxe_readiness_capture.pdb
-    repos: |
-      OpenDevicePartnership/patina-readiness-tool
 
 # Rust Configuration - Cargo Deny
   - files:
