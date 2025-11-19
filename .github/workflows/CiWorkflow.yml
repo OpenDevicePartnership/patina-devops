@@ -79,7 +79,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ ubuntu-latest, windows-latest ]
+        os: [ ubuntu-latest, windows-latest, ubuntu-24.04-arm ]
 
     steps:
       - name: ✅ Checkout Repository ✅
@@ -113,7 +113,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: ${{ runner.os }}-ci-artifacts
+          name: ${{ runner.os }}-${{ runner.arch }}-ci-artifacts
           path: |
             Cargo.lock
             target/cobertura.xml
@@ -122,7 +122,7 @@ jobs:
         if: ${{ inputs.additional-artifacts != '' }}
         uses: actions/upload-artifact@v5
         with:
-          name: ${{ runner.os }}-additional-artifacts
+          name: ${{ runner.os }}-${{ runner.arch }}-additional-artifacts
           path: ${{ inputs.additional-artifacts }}
           if-no-files-found: warn
 
