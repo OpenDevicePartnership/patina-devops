@@ -63,12 +63,13 @@ group:
       dest: .gitignore
       template:
         ignored_files:
+          - '.git_credentials'
+          - '.vscode/launch.json'
           - '*.profraw'
           - '**/target'
           - 'Cargo.lock'
           - 'docs/book/'
           - 'docs/target/'
-          - '.vscode/launch.json'
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
@@ -85,6 +86,7 @@ group:
       template:
         ignored_files:
           - '__pycache__/'
+          - '.git_credentials'
           - '*_extdep/'
           - '*.bak'
           - '*.pyc'
