@@ -63,9 +63,6 @@ jobs:
       - name: Run cargo-deny
         run: cargo make deny
 
-      - name: Run cargo-clippy
-        run: cargo make clippy
-
       - name: Test Documentation
         run: cargo test --doc
 
@@ -87,6 +84,9 @@ jobs:
 
       - name: 🛠️ Download Rust Tools 🛠️
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+
+      - name: Run cargo-clippy
+        run: cargo make clippy
 
       - name: 🧪 Run Tests 🧪
         run: cargo make coverage
