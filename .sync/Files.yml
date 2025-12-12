@@ -247,6 +247,8 @@ group:
   - files:
     - source: .sync/rust/rust-toolchain.toml
       dest: rust-toolchain.toml
+      template:
+        additional_targets: []
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
