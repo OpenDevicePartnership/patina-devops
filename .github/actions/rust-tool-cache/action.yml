@@ -44,6 +44,7 @@ runs:
 
     - name: Install cargo-binstall
       uses: cargo-bins/cargo-binstall@v1.10.17
+      if: steps.tool-cache.outputs.cache-hit != 'true'
 
     # Read any tools from rust-toolchain.toml file and installs them
     - name: Install Rust Tools
@@ -84,3 +85,4 @@ runs:
           cargo binstall -y $TOOL_NAME --version $TOOL_VERSION || cargo install $TOOL_NAME --version $TOOL_VERSION
         done
       if: steps.tool-cache.outputs.cache-hit != 'true'
+
