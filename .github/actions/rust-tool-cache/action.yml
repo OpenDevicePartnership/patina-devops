@@ -43,7 +43,7 @@ runs:
       continue-on-error: true
 
     - name: Install cargo-binstall
-      uses: cargo-bins/cargo-binstall@v1.10.17
+      uses: cargo-bins/cargo-binstall@v1.16.5
       if: steps.tool-cache.outputs.cache-hit != 'true'
 
     # Read any tools from rust-toolchain.toml file and installs them
