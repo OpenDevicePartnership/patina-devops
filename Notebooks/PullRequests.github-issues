@@ -48,5 +48,35 @@
     "kind": 2,
     "language": "github-issues",
     "value": "// This needs to be bumped very occassionally (annually likely) to prevent\r\n// the maximum allowed number of results from being reached.\r\n$since=2025-10-01\r\n\r\n$repos is:closed type:pr sort:created-desc closed:>$since"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "👱 My Open PRs"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$repos is:open type:pr author:@me"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "🕵️ Open PRs not reviewed by me"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$repos is:open type:pr -reviewed-by:@me -author:@me"
+  },
+  {
+    "kind": 1,
+    "language": "markdown",
+    "value": "🕵️ Open PRs reviewed by me"
+  },
+  {
+    "kind": 2,
+    "language": "github-issues",
+    "value": "$repos is:open type:pr reviewed-by:@me -author:@me"
   }
 ]
