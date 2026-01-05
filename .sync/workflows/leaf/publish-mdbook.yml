@@ -14,9 +14,6 @@
 # SPDX-License-Identifier: Apache-2.0
 ##
 
-{%- import '../../Version.njk' as sync_version -%}
-{%- raw -%}
-
 name: Publish Documentation
 
 on:
