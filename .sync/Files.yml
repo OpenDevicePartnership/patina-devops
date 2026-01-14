@@ -226,12 +226,6 @@ group:
       OpenDevicePartnership/patina-paging
 
   - files:
-    - source: .sync/rust/Makefiles/Makefile-patina-qemu.toml
-      dest: Makefile.toml
-    repos: |
-      OpenDevicePartnership/patina-qemu
-
-  - files:
     - source: .sync/rust/Makefiles/Makefile-patina-readiness-tool.toml
       dest: Makefile.toml
     repos: |
@@ -256,7 +250,6 @@ group:
       OpenDevicePartnership/patina-fw-patcher
       OpenDevicePartnership/patina-mtrr
       OpenDevicePartnership/patina-paging
-      OpenDevicePartnership/patina-qemu
 
   - files:
     - source: .sync/rust/rust-toolchain.toml
@@ -281,7 +274,6 @@ group:
       OpenDevicePartnership/patina-fw-patcher
       OpenDevicePartnership/patina-mtrr
       OpenDevicePartnership/patina-paging
-      OpenDevicePartnership/patina-qemu
       OpenDevicePartnership/patina-readiness-tool
 
 ###############################################################################
@@ -619,7 +611,6 @@ group:
   - files:
     - source: .sync/workflows/leaf/publish-mdbook.yml
       dest: .github/workflows/publish-mdbook.yml
-      template: true
     repos: |
       OpenDevicePartnership/patina
 
