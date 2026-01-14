@@ -27,13 +27,13 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: ✅ Checkout Repository ✅
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
       - name: Checkout patina-devops scripts
-        uses: actions/checkout@v5
+        uses: actions/checkout@v6
         with:
           repository: OpenDevicePartnership/patina-devops
           path: patina-devops-scripts
