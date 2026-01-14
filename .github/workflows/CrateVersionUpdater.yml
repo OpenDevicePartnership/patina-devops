@@ -30,19 +30,48 @@ jobs:
       contents: write
 
     steps:
+      - name: Check if triggered by a Crate Version Update PR
+        id: check_pr
+        uses: actions/github-script@v8
+        with:
+          script: |
+            if (context.eventName === 'workflow_run') {
+              try {
+                const { data: commit } = await github.rest.repos.getCommit({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  ref: context.sha
+                });
+
+                // Check using the commit message convention used for crate version update PRs
+                const commitMessage = commit.commit.message;
+                if (commitMessage.startsWith('Chore: Update crate versions to ')) {
+                  core.info('This workflow was triggered by merging a crate version update PR. Skipping execution.');
+                  core.setOutput('skip', 'true');
+                  return;
+                }
+              } catch (error) {
+                core.info(`Could not check commit message: ${error.message}`);
+              }
+            }
+            core.setOutput('skip', 'false');
+
       - name: Validate on main
-        if: github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
+        if: steps.check_pr.outputs.skip == 'false' && github.ref != format('refs/heads/{0}', github.event.repository.default_branch)
         run: |
           echo "This workflow can only be triggered on the default branch."
           exit 1
 
       - name: ✅ Checkout Repository ✅
+        if: steps.check_pr.outputs.skip == 'false'
         uses: actions/checkout@v5
 
       - name: 🛠️ Download Rust Tools 🛠️
+        if: steps.check_pr.outputs.skip == 'false'
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
 
       - name: Generate Token
+        if: steps.check_pr.outputs.skip == 'false'
         id: app-token
         uses: actions/create-github-app-token@v2
         with:
@@ -51,6 +80,7 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Get Release Tag
+        if: steps.check_pr.outputs.skip == 'false'
         id: release_tag
         uses: actions/github-script@v8
         with:
