@@ -42,6 +42,7 @@ jobs:
     with:
       build-tasks: {{ build_tasks | join(",") }}
       run-cargo-vet: {{ run_cargo_vet }}
+      codecov-token: ${{ secrets.CODECOV_TOKEN }}
     secrets: inherit
   {% if test_mdbook -%}
 {{"  "}}mdbook_docs_test:
