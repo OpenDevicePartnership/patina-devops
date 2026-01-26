@@ -86,6 +86,7 @@ group:
       template:
         ignored_files:
           - '__pycache__/'
+          - '.edkCode/'
           - '.git_credentials'
           - '*_extdep/'
           - '*.bak'
