@@ -202,7 +202,6 @@ group:
           - '{ allow = ["MPL-2.0"], crate = "ucs2" }'
         skipped_crates:
           - '{ crate = "bitflags", reason = "Need https://github.com/gz/rust-x86/pull/150 to be merged into rust-x86." }'
-          - '{ crate = "windows-sys", reason = "https://crates.io/crates/colored latest (v3.0.0) uses 0.59. https://crates.io/crates/anstyle-query latest (v1.1.5) uses 0.61." }'
     repos: |
       OpenDevicePartnership/patina-readiness-tool
 
