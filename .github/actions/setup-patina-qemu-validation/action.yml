@@ -1,0 +1,49 @@
+name: Setup Patina QEMU Validation
+
+description: Clone dependencies, build patina-dxe-core-qemu with crate patch, and fetch build_and_run_rust_binary.py.
+
+inputs:
+  patina-repo-path:
+    description: Path to the patina repository root to use for crate patch.
+    required: false
+    default: ${{ github.workspace }}
+
+runs:
+  using: composite
+  steps:
+    - name: Clone Dependencies
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ ! -d "patina-dxe-core-qemu" ]; then
+          git clone https://github.com/OpenDevicePartnership/patina-dxe-core-qemu.git
+        fi
+        if [ ! -d "patina-fw-patcher" ]; then
+          git clone https://github.com/OpenDevicePartnership/patina-fw-patcher.git
+        fi
+
+    - name: Build patina-dxe-core-qemu with PR Changes
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd patina-dxe-core-qemu
+        cargo make q35 -- --crate-patch "${{ inputs.patina-repo-path }}" --leave-patch
+        cargo make q35-release
+        cargo make sbsa
+        cargo make sbsa-release
+
+    - name: Fetch Patina QEMU Build and Patch Script
+      shell: bash
+      run: |
+        set -euo pipefail
+        python - <<'PY'
+        import pathlib
+        import urllib.request
+
+        url = 'https://raw.githubusercontent.com/OpenDevicePartnership/patina-qemu/refs/heads/main/build_and_run_rust_binary.py'
+        output_path = pathlib.Path('patina-dxe-core-qemu/build_and_run_rust_binary.py')
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(url) as response:
+            output_path.write_bytes(response.read())
+        PY
+        chmod +x patina-dxe-core-qemu/build_and_run_rust_binary.py || true
