@@ -1,0 +1,153 @@
+# A reusable workflow that processes metadata from Patina QEMU PR Validation
+# and posts PR comments using a GitHub App token.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+##
+name: Patina QEMU PR Validation Post
+
+on:
+  workflow_call:
+    inputs:
+      triggering-run-id:
+        description: "Workflow run ID of the completed Patina QEMU PR Validation run"
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  post-process:
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'OpenDevicePartnership'
+
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.PATINA_AUTOMATION_APPLICATION_ID }}
+          private-key: ${{ secrets.PATINA_AUTOMATION_APPLICATION_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Download PR metadata artifact from triggering run
+        uses: actions/download-artifact@v6
+        with:
+          name: patina-qemu-pr-metadata
+          path: metadata
+          github-token: ${{ steps.app-token.outputs.token }}
+          run-id: ${{ inputs.triggering-run-id }}
+          repository: ${{ github.repository }}
+
+      - name: Parse metadata
+        id: metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          data = json.loads(pathlib.Path('metadata/pr-metadata.json').read_text(encoding='utf-8'))
+
+          def write(name: str, value):
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+                  f.write(f"{name}={value}\n")
+
+          write('pr_number', data.get('pr_number', ''))
+          readiness = data.get('readiness', {})
+          write('readiness_mismatch', readiness.get('mismatch', 'false'))
+          write('patina_local_version', readiness.get('patina_local_version', ''))
+          write('patina_local_major', readiness.get('patina_local_major', ''))
+          write('patina_latest_tag', readiness.get('patina_latest_tag', ''))
+          write('patina_latest_major_tag', readiness.get('patina_latest_major_tag', ''))
+          write('patina_dxe_core_qemu_dep_version', readiness.get('patina_dxe_core_qemu_dep_version', ''))
+          write('patina_dxe_core_qemu_dep_major', readiness.get('patina_dxe_core_qemu_dep_major', ''))
+          validation = data.get('validation', {})
+          write('validation_failed', 'true' if validation.get('failed') else 'false')
+          PY
+
+      - name: Comment on readiness mismatch
+        if: steps.metadata.outputs.readiness_mismatch == 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const marker = '*This comment was automatically generated during QEMU testing of the PR.*';
+            const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+            });
+
+            const alreadyCommented = comments.data.some((comment) =>
+              comment.body.includes(marker) && comment.body.includes('patina-dxe-core-qemu needs updated')
+            );
+
+            if (!alreadyCommented) {
+              const body = [
+                '## QEMU Readiness Check Failed',
+                '',
+                'patina-dxe-core-qemu needs updated before QEMU validation can run.',
+                '',
+                `- Local patina workspace version: \`${{ steps.metadata.outputs.patina_local_version }}\` (major: \`${{ steps.metadata.outputs.patina_local_major }}\`)`,
+                `- patina dependency in patina-dxe-core-qemu: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_version }}\` (major: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_major }}\`)`,
+                '- Latest release (informational only):',
+                `- Latest patina release major: \`${{ steps.metadata.outputs.patina_latest_major_tag }}\` (tag: \`${{ steps.metadata.outputs.patina_latest_tag }}\`)`,
+                '',
+                marker,
+              ].join('\n');
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Comment on QEMU validation failure
+        if: steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
+            const marker = '*This comment was automatically generated by the patina-qemu-pr-validation-post workflow.*';
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${{ inputs.triggering-run-id }}`;
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+            });
+
+            const alreadyCommented = comments.data.some((comment) =>
+              comment.body.includes(marker) && comment.body.includes('## QEMU Validation Failed')
+            );
+
+            if (alreadyCommented) {
+              return;
+            }
+
+            const body = [
+              '## QEMU Validation Failed',
+              '',
+              'QEMU validation did not complete successfully or did not shutdown as expected.',
+              '',
+              '- Logs are available in workflow artifacts for the triggering run.',
+              `- Workflow run: ${runUrl}`,
+              '',
+              marker,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+              body,
+            });
