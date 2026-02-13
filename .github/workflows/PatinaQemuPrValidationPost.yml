@@ -21,7 +21,6 @@ permissions:
 jobs:
   post-process:
     runs-on: ubuntu-latest
-    if: github.repository_owner == 'OpenDevicePartnership'
 
     steps:
       - name: Generate GitHub App token

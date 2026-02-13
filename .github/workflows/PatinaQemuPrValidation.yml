@@ -25,12 +25,11 @@ permissions:
 jobs:
   vars:
     name: Get Constants
-    uses: OpenDevicePartnership/patina-qemu/.github/workflows/qemu-constants.yml@main
+    uses: OpenDevicePartnership/patina-qemu/.github/workflows/qemu-constants.yml@patina_plat_testing
 
   readiness:
     name: Check Readiness
     runs-on: ubuntu-latest
-    if: github.repository_owner == 'OpenDevicePartnership'
     outputs:
       patina_local_version: ${{ steps.compare.outputs.patina_local_version }}
       patina_local_major: ${{ steps.compare.outputs.patina_local_major }}
@@ -175,7 +174,7 @@ jobs:
           python3 --version
 
       - name: Download Rust tools
-        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@patina_plat_testing
 
       - name: Check Cache For patina-qemu FW Binaries
         id: firmware-cache
@@ -202,7 +201,7 @@ jobs:
           unzip -o .cache/patina-qemu/sbsa.zip -d firmware
 
       - name: Setup and Build patina-dxe-core-qemu
-        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
+        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@patina_plat_testing
         with:
           patina-repo-path: ${{ github.workspace }}
 
@@ -257,7 +256,7 @@ jobs:
           python-version: ${{ needs.vars.outputs['python-version'] }}
 
       - name: Download Rust Tools
-        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@patina_plat_testing
 
       - name: Check Cache For patina-qemu FW Binaries
         id: firmware-cache
@@ -284,7 +283,7 @@ jobs:
           Expand-Archive -Path .cache\patina-qemu\sbsa.zip -DestinationPath firmware -Force
 
       - name: Setup and Build patina-dxe-core-qemu
-        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
+        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@patina_plat_testing
         with:
           patina-repo-path: ${{ github.workspace }}
 
