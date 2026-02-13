@@ -152,7 +152,7 @@ jobs:
     name: Validate QEMU (Linux)
     runs-on: ubuntu-latest
     needs: [vars, readiness]
-    container: ${{ needs.vars.outputs.container_image }}
+    container: ${{ needs.vars.outputs['container-image'] }}
 
     steps:
       - name: Checkout patina
@@ -248,13 +248,27 @@ jobs:
         env:
           SHUTDOWN_AFTER_RUN: 'TRUE'
           QEMU_HEADLESS: 'TRUE'
-          QEMU_CORE_NUM: ${{ needs.vars.outputs.qemu_core_count }}
+          QEMU_CORE_NUM: ${{ needs.vars.outputs['qemu-core-count'] }}
         run: |
           set -o pipefail
           mkdir -p logs
           cd patina-dxe-core-qemu
-          python3 ./build_and_run_rust_binary.py -p Q35 2>&1 | tee ../logs/q35-linux.log
-          python3 ./build_and_run_rust_binary.py -p SBSA 2>&1 | tee ../logs/sbsa-linux.log
+          python3 ./build_and_run_rust_binary.py \
+            --patina-dxe-core-repo "$GITHUB_WORKSPACE/patina-dxe-core-qemu" \
+            --fw-patch-repo "$GITHUB_WORKSPACE/patina-fw-patcher" \
+            --pre-compiled-rom "$GITHUB_WORKSPACE/firmware/Q35/DEBUG-GCC5/QEMUQ35_CODE.fd" \
+            --build-target DEBUG \
+            --toolchain "${{ needs.vars.outputs['linux-toolchain'] }}" \
+            --platform Q35 \
+            2>&1 | tee ../logs/q35-linux.log
+          python3 ./build_and_run_rust_binary.py \
+            --patina-dxe-core-repo "$GITHUB_WORKSPACE/patina-dxe-core-qemu" \
+            --fw-patch-repo "$GITHUB_WORKSPACE/patina-fw-patcher" \
+            --pre-compiled-rom "$GITHUB_WORKSPACE/firmware/SBSA/DEBUG-GCC5/QEMU_EFI.fd" \
+            --build-target DEBUG \
+            --toolchain "${{ needs.vars.outputs['linux-toolchain'] }}" \
+            --platform SBSA \
+            2>&1 | tee ../logs/sbsa-linux.log
 
       - name: Upload QEMU Linux Logs
         if: always()
@@ -277,7 +291,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ needs.vars.outputs.python_version }}
+          python-version: ${{ needs.vars.outputs['python-version'] }}
 
       - name: Download Rust Tools
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
@@ -382,6 +396,7 @@ jobs:
           Invoke-WebRequest -Uri "${{ steps.windows-qemu.outputs.zip-url }}" -OutFile ".cache\qemu\windows-qemu.zip"
 
       - name: Extract and Add Windows QEMU to PATH
+        id: qemu-path
         shell: pwsh
         run: |
           Expand-Archive -Path ".cache\qemu\windows-qemu.zip" -DestinationPath ".cache\qemu\windows" -Force
@@ -389,18 +404,26 @@ jobs:
           if (-not $exe) { throw "qemu-system-x86_64.exe not found after extracting Windows QEMU package" }
           $dir = $exe.DirectoryName
           "$dir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "qemu_path=$dir" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Patch and Run Changes on QEMU Windows
         shell: pwsh
         env:
           SHUTDOWN_AFTER_RUN: 'TRUE'
           QEMU_HEADLESS: 'TRUE'
-          QEMU_CORE_NUM: ${{ needs.vars.outputs.qemu_core_count }}
+          QEMU_CORE_NUM: ${{ needs.vars.outputs['qemu-core-count'] }}
         run: |
           New-Item -ItemType Directory -Path logs -Force | Out-Null
           Push-Location patina-dxe-core-qemu
           try {
-            python .\build_and_run_rust_binary.py -p Q35 *>&1 | Tee-Object -FilePath ..\logs\q35-windows.log
+            python .\build_and_run_rust_binary.py `
+              --patina-dxe-core-repo "$env:GITHUB_WORKSPACE\patina-dxe-core-qemu" `
+              --fw-patch-repo "$env:GITHUB_WORKSPACE\patina-fw-patcher" `
+              --pre-compiled-rom "$env:GITHUB_WORKSPACE\firmware\Q35\DEBUG-VS2022\QEMUQ35_CODE.fd" `
+              --qemu-path "${{ steps.qemu-path.outputs.qemu_path }}" `
+              --build-target DEBUG `
+              --toolchain "${{ needs.vars.outputs['windows-toolchain'] }}" `
+              --platform Q35 *>&1 | Tee-Object -FilePath ..\logs\q35-windows.log
             if ($LASTEXITCODE -ne 0) {
               throw "QEMU run failed for Q35 on Windows"
             }
