@@ -1,0 +1,42 @@
+# Extract full compiler error/warning sections from build logs and write a
+# JSON error map that can be used to embed errors in PR comments.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+##
+name: Extract Build Errors
+
+description: >-
+  Scans a directory of log files for rustc diagnostic blocks and build-system
+  errors, then writes a JSON file mapping artifact directory names to markdown
+  snippets.
+
+inputs:
+  logs-dir:
+    description: >-
+      Path to the directory containing downloaded log artifacts. Each artifact
+      is expected in a subdirectory (e.g. logs/qemu-validation-logs-Linux-Q35/).
+    required: true
+  output-json:
+    description: Path to write the resulting JSON error map.
+    required: false
+    default: error-map.json
+
+runs:
+  using: composite
+  steps:
+    - name: Extract Build Errors
+      shell: python
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        LOGS_DIR: ${{ inputs.logs-dir }}
+        OUTPUT_JSON: ${{ inputs.output-json }}
+      run: |
+        import os, subprocess, sys
+
+        script = os.path.join(os.environ["ACTION_PATH"], "extract_build_errors.py")
+        sys.exit(subprocess.call([
+            sys.executable, script,
+            os.environ["LOGS_DIR"],
+            os.environ["OUTPUT_JSON"],
+        ]))
