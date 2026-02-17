@@ -93,7 +93,6 @@ group:
           - '*.pyc'
           - '*.vcxproj.user'
           - '/**/AutoGen/**'
-          - '/**/Include/Generated/**'
           - '/Build/'
           - '/Conf/'
           - '/target'
