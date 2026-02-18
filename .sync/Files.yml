@@ -151,20 +151,11 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-fw-patcher
       OpenDevicePartnership/patina-mtrr
       OpenDevicePartnership/patina-paging
       OpenDevicePartnership/patina-readiness-tool
-
-  - files:
-    - source: .sync/rust/config.toml
-      dest: .cargo/config.toml
-      template:
-        include_uefi_target_rules: true
-        aarch64_pdb_name: qemu_sbsa_dxe_core.pdb
-        x86_64_pdb_name: qemu_q35_dxe_core.pdb
-    repos: |
-      OpenDevicePartnership/patina-dxe-core-qemu
 
 # Rust Configuration - Cargo Deny
   - files:
@@ -485,6 +476,8 @@ group:
           - "sbsa"
           - "q35-release"
           - "sbsa-release"
+          - "ovmf"
+          - "ovmf-release"
         run_cargo_vet: false
         trigger_branches:
           - "main"
