@@ -43,7 +43,9 @@ runs:
       continue-on-error: true
 
     - name: Install cargo-binstall
-      uses: cargo-bins/cargo-binstall@v1.16.5
+      shell: bash
+      run: |
+        curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       if: steps.tool-cache.outputs.cache-hit != 'true'
 
     # Read any tools from rust-toolchain.toml file and installs them
