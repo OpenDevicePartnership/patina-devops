@@ -146,8 +146,6 @@ group:
   - files:
     - source: .sync/rust/config.toml
       dest: .cargo/config.toml
-      template:
-        include_uefi_target_rules: false
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps

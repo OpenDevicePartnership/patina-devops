@@ -6,21 +6,3 @@
 
 [net]
 git-fetch-with-cli = true
-
-{% if include_uefi_target_rules %}
-[target.x86_64-unknown-uefi]
-rustflags = [
-    "-C", "link-arg=/base:0x0",
-    "-C", "link-arg=/subsystem:{{ subsystem_type | default("efi_boot_service_driver") }}",
-    "-C", "force-unwind-tables", # Generates .pdata section for stack tracing
-    "-C", "link-arg=/PDBALTPATH:{{ x86_64_pdb_name | default("x86_64_bin.pdb") }}",
-]
-
-[target.aarch64-unknown-uefi]
-rustflags = [
-    "-C", "link-arg=/base:0x0",
-    "-C", "link-arg=/subsystem:{{ subsystem_type | default("efi_boot_service_driver") }}",
-    "-C", "force-unwind-tables", # Generates .pdata section for stack tracing
-    "-C", "link-arg=/PDBALTPATH:{{ aarch64_pdb_name | default("aarch64_bin.pdb") }}",
-]
-{% endif %}
