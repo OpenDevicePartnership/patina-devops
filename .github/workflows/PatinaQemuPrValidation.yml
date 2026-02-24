@@ -25,7 +25,7 @@ permissions:
 jobs:
   vars:
     name: Get Constants
-    uses: OpenDevicePartnership/patina-devops/.github/workflows/qemu-constants.yml@main
+    uses: OpenDevicePartnership/patina-devops/.github/workflows/qemu-constants.yml@patina_e2e_plat_validation
 
   preflight:
     name: Preflight Checks
@@ -300,7 +300,7 @@ jobs:
         run: python3 --version
 
       - name: Download Rust Tools
-        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@patina_e2e_plat_validation
 
       - name: Check Cache for patina-qemu FW Binary
         id: firmware-cache
@@ -323,7 +323,7 @@ jobs:
         run: unzip -o .cache/patina-qemu/${{ matrix.fw_zip }} -d "$FW_DIR"
 
       - name: Setup and Build patina-dxe-core-qemu
-        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
+        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@patina_e2e_plat_validation
         with:
           deps-dir: ${{ env.DEPS_DIR }}
           dxe-core-qemu-repo: ${{ env.DXE_CORE_QEMU_REPO }}
@@ -333,7 +333,7 @@ jobs:
           patina-repo: ${{ env.PATINA_REPO }}
 
       - name: Run QEMU Validation - ${{ matrix.platform }} (Linux)
-        uses: OpenDevicePartnership/patina-devops/.github/actions/run-patina-qemu-validation@main
+        uses: OpenDevicePartnership/patina-devops/.github/actions/run-patina-qemu-validation@patina_e2e_plat_validation
         with:
           fw-patch-repo: ${{ env.FW_PATCHER_REPO }}
           log-file: ${{ env.LOG_DIR }}/${{ matrix.log_file }}
@@ -388,7 +388,7 @@ jobs:
           python-version: ${{ needs.vars.outputs['python-version'] }}
 
       - name: Download Rust Tools
-        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@patina_e2e_plat_validation
 
       - name: Check Cache for patina-qemu FW Binaries
         id: firmware-cache
@@ -414,7 +414,7 @@ jobs:
           Expand-Archive -Path .cache\patina-qemu\sbsa.zip -DestinationPath "$env:FW_DIR" -Force
 
       - name: Setup and Build patina-dxe-core-qemu
-        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
+        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@patina_e2e_plat_validation
         with:
           deps-dir: ${{ env.DEPS_DIR }}
           dxe-core-qemu-repo: ${{ env.DXE_CORE_QEMU_REPO }}
@@ -508,7 +508,7 @@ jobs:
           "qemu_exec=$exePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Run QEMU Validation - Q35 (Windows)
-        uses: OpenDevicePartnership/patina-devops/.github/actions/run-patina-qemu-validation@main
+        uses: OpenDevicePartnership/patina-devops/.github/actions/run-patina-qemu-validation@patina_e2e_plat_validation
         with:
           fw-patch-repo: ${{ env.FW_PATCHER_REPO }}
           log-file: ${{ env.LOG_DIR }}/q35-windows.log

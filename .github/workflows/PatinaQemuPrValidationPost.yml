@@ -132,7 +132,7 @@ jobs:
 
       - name: Extract Errors from QEMU Logs
         if: steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
-        uses: OpenDevicePartnership/patina-devops/.github/actions/extract-build-errors@main
+        uses: OpenDevicePartnership/patina-devops/.github/actions/extract-build-errors@patina_e2e_plat_validation
         with:
           logs-dir: logs
           output-json: error-map.json
