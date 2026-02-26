@@ -32,6 +32,8 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Download PR Metadata from Triggering Run
+        id: download-metadata
+        continue-on-error: true
         uses: actions/download-artifact@v6
         with:
           name: patina-qemu-pr-metadata
@@ -40,7 +42,15 @@ jobs:
           run-id: ${{ inputs.triggering-run-id }}
           repository: ${{ github.repository }}
 
+      - name: Skip if No Metadata Artifact
+        if: steps.download-metadata.outcome != 'success'
+        shell: bash
+        run: |
+          echo "::notice::PR metadata artifact not found for run ${{ inputs.triggering-run-id }}. Skipping post-processing."
+          echo "This is expected when the triggering workflow was skipped or did not produce metadata."
+
       - name: Parse PR Metadata
+        if: steps.download-metadata.outcome == 'success'
         id: metadata
         shell: bash
         run: |
@@ -69,7 +79,7 @@ jobs:
           PY
 
       - name: Comment on Readiness Mismatch
-        if: steps.metadata.outputs.readiness_mismatch == 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.readiness_mismatch == 'true'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token }}
@@ -119,7 +129,7 @@ jobs:
             }
 
       - name: Download QEMU Logs from Triggering Run
-        if: steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
         id: download-logs
         continue-on-error: true
         uses: actions/download-artifact@v6
@@ -131,14 +141,14 @@ jobs:
           repository: ${{ github.repository }}
 
       - name: Extract Errors from QEMU Logs
-        if: steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: OpenDevicePartnership/patina-devops/.github/actions/extract-build-errors@patina_e2e_plat_validation
         with:
           logs-dir: logs
           output-json: error-map.json
 
       - name: Comment on QEMU Validation Failure
-        if: steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token }}
@@ -341,7 +351,7 @@ jobs:
             }
 
       - name: Download QEMU Logs for Timing
-        if: steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         id: download-timing-logs
         continue-on-error: true
         uses: actions/download-artifact@v6
@@ -353,7 +363,7 @@ jobs:
           run-id: ${{ inputs.triggering-run-id }}
 
       - name: Parse Timing Data
-        if: steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         id: timing
         shell: bash
         run: |
@@ -391,7 +401,7 @@ jobs:
           PY
 
       - name: Comment on QEMU Validation Success
-        if: steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token }}
