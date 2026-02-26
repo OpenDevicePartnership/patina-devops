@@ -525,7 +525,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: qemu-validation-logs-${{ runner.os }}
+          name: qemu-validation-logs-${{ runner.os }}-Q35
           path: ${{ env.LOG_DIR }}/*
           if-no-files-found: warn
 
