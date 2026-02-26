@@ -237,7 +237,12 @@ def main() -> int:
         except subprocess.TimeoutExpired:
             timed_out = True
             _kill_process_tree(process)
-            return_code = process.wait()
+            try:
+                return_code = process.wait(
+                    timeout=THREAD_JOIN_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired:
+                return_code = 1
         finally:
             # Prevent orphaned grandchild processes from holding pipe handles
             # that cause threads to hang forever.
