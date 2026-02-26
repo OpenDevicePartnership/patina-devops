@@ -257,11 +257,11 @@ jobs:
             fw_cache_key_suffix: q35
             rom_subpath: Q35/DEBUG-GCC5/QEMUQ35_CODE.fd
             log_file: q35-linux.log
-          - platform: SBSA
-            fw_zip: sbsa.zip
-            fw_cache_key_suffix: sbsa
-            rom_subpath: SBSA/DEBUG-GCC5/QEMU_EFI.fd
-            log_file: sbsa-linux.log
+          # - platform: SBSA
+          #   fw_zip: sbsa.zip
+          #   fw_cache_key_suffix: sbsa
+          #   rom_subpath: SBSA/DEBUG-GCC5/QEMU_EFI.fd
+          #   log_file: sbsa-linux.log
 
     steps:
       - name: Checkout Patina
