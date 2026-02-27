@@ -507,7 +507,10 @@ jobs:
           "$dir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           "qemu_exec=$exePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
+      # ── Temporarily disabled: Windows Q35 QEMU boot due to QEMU vfat issue on Windows
+      #    - See: https://github.com/OpenDevicePartnership/patina-qemu/issues/188
       - name: Run QEMU Validation - Q35 (Windows)
+        if: false
         uses: OpenDevicePartnership/patina-devops/.github/actions/run-patina-qemu-validation@patina_e2e_plat_validation
         with:
           fw-patch-repo: ${{ env.FW_PATCHER_REPO }}
