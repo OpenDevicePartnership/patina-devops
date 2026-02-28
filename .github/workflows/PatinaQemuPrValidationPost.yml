@@ -84,9 +84,11 @@ jobs:
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const hiddenMarker = '<!-- patina-qemu-readiness-check -->';
+            const hiddenMarker = '<!-- patina-qemu-validation-result -->';
             const marker = '*This comment was automatically generated during QEMU testing of the PR.*';
             const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
+            const runId = Number('${{ inputs.triggering-run-id }}');
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
 
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -100,14 +102,18 @@ jobs:
 
             const body = [
               hiddenMarker,
-              '## QEMU Readiness Check Failed',
+              '## :x: QEMU Readiness Check Failed',
               '',
-              'patina-dxe-core-qemu needs updated before QEMU validation can run.',
+              'patina-dxe-core-qemu needs to be updated before QEMU validation can run.',
               '',
               `- Local patina workspace version: \`${{ steps.metadata.outputs.patina_local_version }}\` (major: \`${{ steps.metadata.outputs.patina_local_major }}\`)`,
               `- patina dependency in patina-dxe-core-qemu: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_version }}\` (major: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_major }}\`)`,
               '- Latest release (informational only):',
-              `- Latest patina release major: \`${{ steps.metadata.outputs.patina_latest_major_tag }}\` (tag: \`${{ steps.metadata.outputs.patina_latest_tag }}\`)`,
+              `  - Latest patina release major: \`${{ steps.metadata.outputs.patina_latest_major_tag }}\` (tag: \`${{ steps.metadata.outputs.patina_latest_tag }}\`)`,
+              '',
+              `**Workflow run:** ${runUrl}`,
+              '',
+              '> **Note:** Previous results are available in this comment\'s edit history.',
               '',
               marker,
             ].join('\n');
