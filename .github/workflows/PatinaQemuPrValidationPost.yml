@@ -1,0 +1,476 @@
+# A reusable workflow that processes metadata from Patina QEMU PR Validation
+# and posts PR comments using the Patina GitHub app token.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+##
+name: Patina QEMU PR Validation Post
+
+on:
+  workflow_call:
+    inputs:
+      triggering-run-id:
+        description: "Workflow run ID of the completed Patina QEMU PR Validation run"
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  post-process:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Generate GitHub App Token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.PATINA_AUTOMATION_APPLICATION_ID }}
+          private-key: ${{ secrets.PATINA_AUTOMATION_APPLICATION_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Download PR Metadata from Triggering Run
+        id: download-metadata
+        continue-on-error: true
+        uses: actions/download-artifact@v6
+        with:
+          name: patina-qemu-pr-metadata
+          path: metadata
+          github-token: ${{ steps.app-token.outputs.token }}
+          run-id: ${{ inputs.triggering-run-id }}
+          repository: ${{ github.repository }}
+
+      - name: Skip if No Metadata Artifact
+        if: steps.download-metadata.outcome != 'success'
+        shell: bash
+        run: |
+          echo "::notice::PR metadata artifact not found for run ${{ inputs.triggering-run-id }}. Skipping post-processing."
+          echo "This is expected when the triggering workflow was skipped or did not produce metadata."
+
+      - name: Parse PR Metadata
+        if: steps.download-metadata.outcome == 'success'
+        id: metadata
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          data = json.loads(pathlib.Path('metadata/pr-metadata.json').read_text(encoding='utf-8'))
+
+          def write(name: str, value):
+              with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+                  f.write(f"{name}={value}\n")
+
+          write('pr_number', data.get('pr_number', ''))
+          readiness = data.get('readiness', {})
+          write('readiness_mismatch', readiness.get('mismatch', 'false'))
+          write('patina_local_version', readiness.get('patina_local_version', ''))
+          write('patina_local_major', readiness.get('patina_local_major', ''))
+          write('patina_latest_tag', readiness.get('patina_latest_tag', ''))
+          write('patina_latest_major_tag', readiness.get('patina_latest_major_tag', ''))
+          write('patina_dxe_core_qemu_dep_version', readiness.get('patina_dxe_core_qemu_dep_version', ''))
+          write('patina_dxe_core_qemu_dep_major', readiness.get('patina_dxe_core_qemu_dep_major', ''))
+          validation = data.get('validation', {})
+          write('validation_failed', 'true' if validation.get('failed') else 'false')
+          PY
+
+      - name: Comment on Readiness Mismatch
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.readiness_mismatch == 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const hiddenMarker = '<!-- patina-qemu-readiness-check -->';
+            const marker = '*This comment was automatically generated during QEMU testing of the PR.*';
+            const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+            });
+
+            const existingComment = comments.data.find((comment) =>
+              comment.body.includes(hiddenMarker)
+            );
+
+            const body = [
+              hiddenMarker,
+              '## QEMU Readiness Check Failed',
+              '',
+              'patina-dxe-core-qemu needs updated before QEMU validation can run.',
+              '',
+              `- Local patina workspace version: \`${{ steps.metadata.outputs.patina_local_version }}\` (major: \`${{ steps.metadata.outputs.patina_local_major }}\`)`,
+              `- patina dependency in patina-dxe-core-qemu: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_version }}\` (major: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_major }}\`)`,
+              '- Latest release (informational only):',
+              `- Latest patina release major: \`${{ steps.metadata.outputs.patina_latest_major_tag }}\` (tag: \`${{ steps.metadata.outputs.patina_latest_tag }}\`)`,
+              '',
+              marker,
+            ].join('\n');
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Download QEMU Logs from Triggering Run
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
+        id: download-logs
+        continue-on-error: true
+        uses: actions/download-artifact@v6
+        with:
+          pattern: qemu-validation-logs-*
+          path: logs
+          github-token: ${{ steps.app-token.outputs.token }}
+          run-id: ${{ inputs.triggering-run-id }}
+          repository: ${{ github.repository }}
+
+      - name: Extract Errors from QEMU Logs
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
+        uses: OpenDevicePartnership/patina-devops/.github/actions/extract-build-errors@main
+        with:
+          logs-dir: logs
+          output-json: error-map.json
+
+      - name: Comment on QEMU Validation Failure
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const fs = require('fs');
+            const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
+            const hiddenMarker = '<!-- patina-qemu-validation-result -->';
+            const workflowName = '${{ github.workflow }}';
+            const workflowUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/${'${{ github.workflow_ref }}'.split('@')[0].split('/').pop()}`;
+            const marker = `*This comment was automatically generated by the [${workflowName}](${workflowUrl}) workflow.*`;
+            const runId = Number('${{ inputs.triggering-run-id }}');
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+            });
+
+            const existingComment = comments.data.find((comment) =>
+              comment.body.includes(hiddenMarker)
+            );
+
+            // Load per-artifact error snippets produced by the extraction step.
+            let errorMap = {};
+            try {
+              errorMap = JSON.parse(fs.readFileSync('error-map.json', 'utf8'));
+            } catch {
+              // No error map available — will still show the table.
+            }
+
+            // Fetch all jobs for the triggering workflow run.
+            const jobs = [];
+            for (let page = 1; ; page++) {
+              const resp = await github.rest.actions.listJobsForWorkflowRun({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId,
+                per_page: 100,
+                page,
+              });
+              jobs.push(...resp.data.jobs);
+              if (resp.data.jobs.length < 100) break;
+            }
+
+            // Filter out jobs that were skipped or never ran.
+            const ranJobs = jobs.filter(
+              (j) => j.status === 'completed' && j.conclusion !== 'skipped'
+            );
+
+            // Build a mapping from "Validate QEMU" job names to their matching
+            // artifact directory key to attach error logs.
+            //
+            // Job names may include a reusable-workflow prefix, e.g.:
+            //   "Run Patina QEMU Validation / Validate QEMU - Q35 (Linux)"
+            //   "Run Patina QEMU Validation / Validate QEMU Q35 (Windows)"
+            // Artifact dirs look like:
+            //   "qemu-validation-logs-Linux-Q35"
+            //   "qemu-validation-logs-Windows"
+            function findErrorSnippets(jobName) {
+              const osMatch = jobName.match(/\((\w+)\)\s*$/);
+              if (!osMatch) return '';
+              const os = osMatch[1]; // "Linux" or "Windows"
+
+              // Try to extract the platform from the job name (e.g. "Q35", "SBSA")
+              const platMatch = jobName.match(/Validate QEMU\s*[-–—]?\s*(\w+)\s*\(/);
+              const platform = platMatch ? platMatch[1] : null;
+
+              const snippets = [];
+              for (const [artifactDir, parts] of Object.entries(errorMap)) {
+                const dirUpper = artifactDir.toUpperCase();
+                if (!dirUpper.includes(os.toUpperCase())) continue;
+                if (platform && !dirUpper.includes(platform.toUpperCase())) continue;
+                snippets.push(...parts);
+              }
+              return snippets.join('\n\n');
+            }
+
+            // Build the job status table.
+            const tableLines = [
+              '| Job | Result |',
+              '|:----|:------:|',
+            ];
+
+            // Collect error snippets for failed QEMU validation jobs to render
+            // in a standalone section after the table.
+            const allErrorSnippets = [];
+
+            for (const job of ranJobs) {
+              const icon = job.conclusion === 'success' ? ':white_check_mark:' : ':x:';
+              tableLines.push(`| ${job.name} | ${icon} |`);
+
+              // Use .includes() since job names are prefixed with the calling
+              // workflow name (e.g. "Run Patina QEMU Validation / Validate QEMU ...").
+              const isQemuJob = job.name.includes('Validate QEMU');
+              if (isQemuJob && job.conclusion !== 'success') {
+                const snippet = findErrorSnippets(job.name);
+                if (snippet) {
+                  allErrorSnippets.push(snippet);
+                }
+              }
+            }
+
+            // Build the error details section if any error snippets were found.
+            let errorSection = '';
+            if (allErrorSnippets.length > 0) {
+              errorSection = [
+                '',
+                '### Error Details',
+                '',
+                ...allErrorSnippets,
+                '',
+              ].join('\n');
+            }
+
+            // Detect build step failures
+            const buildStepPattern = /build patina-dxe-core-qemu/i;
+            const buildFailures = ranJobs.filter((job) =>
+              job.steps && job.steps.some(
+                (s) => buildStepPattern.test(s.name) && s.conclusion === 'failure'
+              )
+            );
+
+            let buildFailureSection = '';
+            if (buildFailures.length > 0) {
+              // Fetch workflow run artifacts to include download links.
+              const artifactResp = await github.rest.actions.listWorkflowRunArtifacts({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: runId,
+              });
+              const logArtifacts = artifactResp.data.artifacts.filter(
+                (a) => a.name.startsWith('qemu-validation-logs-')
+              );
+
+              const failedJobBullets = buildFailures.map(
+                (j) => `- **${j.name}**`
+              ).join('\n');
+
+              const artifactBullets = logArtifacts.length > 0
+                ? logArtifacts.map(
+                    (a) => `- [\`${a.name}\`](${runUrl}/artifacts/${a.id})`
+                  ).join('\n')
+                : '_No log artifacts found._';
+
+              buildFailureSection = [
+                '### :warning: Build Failure Detected',
+                '',
+                'The **Setup and Build patina-dxe-core-qemu** step failed in the following job(s):',
+                '',
+                failedJobBullets,
+                '',
+                'Build logs are available in the workflow run artifacts:',
+                '',
+                artifactBullets,
+                '',
+                'Download the log artifacts from the workflow run to review the build output and',
+                'determine whether the error is expected.',
+                '',
+                '> **Is this expected?** If the PR introduces breaking changes to patina that',
+                '> require a corresponding update to [patina-dxe-core-qemu](https://github.com/OpenDevicePartnership/patina-dxe-core-qemu),',
+                '> the build failure is expected.',
+                '> ',
+                '> Contact a repo admin or PR reviewer to override the `Patina QEMU PR Validation` status check.',
+                '',
+              ].join('\n');
+            }
+
+            const body = [
+              hiddenMarker,
+              '## QEMU Validation Failed',
+              '',
+              'QEMU validation did not complete successfully or did not shutdown as expected.',
+              '',
+              `**Workflow run:** ${runUrl}`,
+              '',
+              ...(buildFailureSection ? [buildFailureSection] : []),
+              '### Job Results',
+              '',
+              ...tableLines,
+              errorSection,
+              '',
+              marker,
+            ].join('\n');
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Download QEMU Logs for Timing
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
+        id: download-timing-logs
+        continue-on-error: true
+        uses: actions/download-artifact@v6
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          path: logs
+          pattern: qemu-validation-logs-*
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.triggering-run-id }}
+
+      - name: Parse Timing Data
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
+        id: timing
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          logs_dir = pathlib.Path('logs')
+          timing_entries = []
+
+          if logs_dir.is_dir():
+              for timing_file in sorted(logs_dir.rglob('*.timing.json')):
+                  try:
+                      data = json.loads(timing_file.read_text(encoding='utf-8'))
+
+                      # Derive a label from the artifact directory and file stem.
+                      # e.g. "qemu-validation-logs-Linux-Q35/q35-linux" -> "Linux Q35"
+                      artifact_dir = timing_file.relative_to(logs_dir).parts[0]
+
+                      # Strip the common prefix to get the OS/platform suffix.
+                      label = artifact_dir.replace('qemu-validation-logs-', '').replace('-', ' ')
+
+                      timing_entries.append({
+                          'label': label,
+                          'elapsed_display': data.get('elapsed_display', 'N/A'),
+                          'elapsed_seconds': data.get('elapsed_seconds', 0),
+                      })
+                  except (json.JSONDecodeError, KeyError):
+                      continue
+
+          timing_json = json.dumps(timing_entries)
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
+              f.write(f"timing={timing_json}\n")
+          PY
+
+      - name: Comment on QEMU Validation Success
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
+            const hiddenMarker = '<!-- patina-qemu-validation-result -->';
+            const workflowName = '${{ github.workflow }}';
+            const workflowUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/${'${{ github.workflow_ref }}'.split('@')[0].split('/').pop()}`;
+            const marker = `*This comment was automatically generated by the [${workflowName}](${workflowUrl}) workflow.*`;
+            const runId = Number('${{ inputs.triggering-run-id }}');
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+            });
+
+            const existingComment = comments.data.find((comment) =>
+              comment.body.includes(hiddenMarker)
+            );
+
+            // Parse timing data produced by the previous step.
+            let timingEntries = [];
+            try {
+              timingEntries = JSON.parse('${{ steps.timing.outputs.timing }}');
+            } catch {
+              // Timing data unavailable — proceed without it.
+            }
+
+            let timingSection = '';
+            if (timingEntries.length > 0) {
+              const rows = timingEntries.map(
+                (e) => `| ${e.label} | ${e.elapsed_display} |`
+              );
+              timingSection = [
+                '',
+                '### Boot Time to EFI Shell',
+                '',
+                '| Platform | Elapsed |',
+                '|:---------|--------:|',
+                ...rows,
+                '',
+              ].join('\n');
+            }
+
+            const body = [
+              hiddenMarker,
+              '## :white_check_mark: QEMU Validation Passed',
+              '',
+              'All QEMU validation jobs completed successfully.',
+              '',
+              `**Workflow run:** ${runUrl}`,
+              timingSection,
+              marker,
+            ].join('\n');
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body,
+              });
+            }

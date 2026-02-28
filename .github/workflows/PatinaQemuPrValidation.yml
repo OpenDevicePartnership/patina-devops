@@ -1,0 +1,584 @@
+# A reusable workflow that builds patina-dxe-core-qemu against the
+# current Patina PR and validates booting with the PR changes on QEMU.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+##
+name: Patina QEMU PR Validation
+
+on:
+  workflow_call:
+    inputs:
+      pr-number:
+        description: "Pull request number in the caller repository"
+        required: true
+        type: number
+      patina-ref:
+        description: "Commit/branch/tag to checkout in patina"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  vars:
+    name: Get Constants
+    uses: OpenDevicePartnership/patina-devops/.github/workflows/qemu-constants.yml@main
+
+  preflight:
+    name: Preflight Checks
+    runs-on: ubuntu-latest
+    outputs:
+      fw_release_tag: ${{ steps.fw-assets.outputs.tag }}
+      patina_local_version: ${{ steps.compare.outputs.patina_local_version }}
+      patina_local_major: ${{ steps.compare.outputs.patina_local_major }}
+      patina_latest_tag: ${{ steps.compare.outputs.patina_latest_tag }}
+      patina_latest_major_tag: ${{ steps.compare.outputs.patina_latest_major_tag }}
+      patina_dxe_core_qemu_dep_version: ${{ steps.compare.outputs.patina_dxe_core_qemu_dep_version }}
+      patina_dxe_core_qemu_dep_major: ${{ steps.compare.outputs.patina_dxe_core_qemu_dep_major }}
+      mismatch: ${{ steps.compare.outputs.mismatch }}
+      q35_fw_url: ${{ steps.fw-assets.outputs.q35_url }}
+      sbsa_fw_url: ${{ steps.fw-assets.outputs.sbsa_url }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          repository: OpenDevicePartnership/patina
+          ref: ${{ inputs.patina-ref }}
+
+      # Note: Authorizing requests with the GitHub default token should work since these are pubic
+      # repos. It should also reduce the likelihood of hitting the API rate limit.
+      - name: Resolve GitHub API Cache Keys
+        id: cache-keys
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          AUTH_HEADER="Authorization: Bearer $GH_TOKEN"
+
+          patina_tag=$(curl -sfL -H "$AUTH_HEADER" \
+            "https://api.github.com/repos/OpenDevicePartnership/patina/releases/latest" \
+            | jq -r '.tag_name')
+          if [ -z "$patina_tag" ] || [ "$patina_tag" = "null" ]; then
+            echo "::error::Failed to retrieve patina latest release tag"
+            exit 1
+          fi
+          echo "patina latest release tag: $patina_tag"
+
+          cargo_commit=$(curl -sfL -H "$AUTH_HEADER" \
+            "https://api.github.com/repos/OpenDevicePartnership/patina-dxe-core-qemu/commits?path=Cargo.toml&sha=main&per_page=1" \
+            | jq -r '.[0].sha')
+          if [ -z "$cargo_commit" ] || [ "$cargo_commit" = "null" ]; then
+            echo "::error::Failed to retrieve patina-dxe-core-qemu Cargo.toml latest commit hash"
+            exit 1
+          fi
+          echo "patina-dxe-core-qemu Cargo.toml latest commit: $cargo_commit"
+
+          qemu_tag=$(curl -sfL -H "$AUTH_HEADER" \
+            "https://api.github.com/repos/OpenDevicePartnership/patina-qemu/releases/latest" \
+            | jq -r '.tag_name')
+          if [ -z "$qemu_tag" ] || [ "$qemu_tag" = "null" ]; then
+            echo "::error::Failed to retrieve patina-qemu latest release tag"
+            exit 1
+          fi
+          echo "patina-qemu latest release tag: $qemu_tag"
+
+          echo "key=gh-files-preflight-patina-${patina_tag}-cargo-${cargo_commit}-qemu-${qemu_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore GitHub API File Cache
+        id: gh-file-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .cache/github-files
+          key: ${{ steps.cache-keys.outputs.key }}
+
+      - name: Download GitHub API Files
+        if: steps.gh-file-cache.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          AUTH_HEADER="Authorization: Bearer $GH_TOKEN"
+          mkdir -p .cache/github-files
+          curl -sfL -H "$AUTH_HEADER" \
+            "https://api.github.com/repos/OpenDevicePartnership/patina/releases/latest" \
+            -o .cache/github-files/patina-releases-latest.json
+          curl -sfL -H "$AUTH_HEADER" \
+            "https://raw.githubusercontent.com/OpenDevicePartnership/patina-dxe-core-qemu/refs/heads/main/Cargo.toml" \
+            -o .cache/github-files/patina-dxe-core-qemu-cargo.toml
+          curl -sfL -H "$AUTH_HEADER" \
+            "https://api.github.com/repos/OpenDevicePartnership/patina-qemu/releases/latest" \
+            -o .cache/github-files/patina-qemu-releases-latest.json
+
+      - name: Save GitHub API File Cache
+        if: always() && steps.gh-file-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: .cache/github-files
+          key: ${{ steps.cache-keys.outputs.key }}
+
+      - name: Check Major Version Compatibility
+        id: compare
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+          import re
+          import tomllib
+
+          # Get the major version in Cargo.toml in the patina repo
+          patina_cargo_toml_text = pathlib.Path('Cargo.toml').read_text(encoding='utf-8')
+          patina_cargo_data = tomllib.loads(patina_cargo_toml_text)
+          patina_local_version = patina_cargo_data['workspace']['package']['version']
+          patina_local_major = int(patina_local_version.split('.')[0])
+
+          # Get the major version from the latest GitHub release in the patina repo (cached)
+          with open('.cache/github-files/patina-releases-latest.json', 'r', encoding='utf-8') as f:
+              patina_latest_gh_release = json.loads(f.read())
+
+          patina_latest_tag = patina_latest_gh_release['tag_name']
+          patina_latest_major_tag_match = re.search(r'(\d+)', patina_latest_tag)
+
+          if patina_latest_major_tag_match is None:
+              raise SystemExit(f'Unable to parse latest release major from tag: {patina_latest_tag}')
+
+          patina_latest_major_tag = int(patina_latest_major_tag_match.group(1))
+
+          # Get the major version in Cargo.toml in patina-dxe-core-qemu/main (cached)
+          patina_dxe_core_qemu_cargo_text = pathlib.Path('.cache/github-files/patina-dxe-core-qemu-cargo.toml').read_text(encoding='utf-8')
+
+          patina_dxe_core_qemu_cargo_toml = tomllib.loads(patina_dxe_core_qemu_cargo_text)
+
+          patina_dxe_core_qemu_dep = None
+          if 'dependencies' in patina_dxe_core_qemu_cargo_toml and 'patina' in patina_dxe_core_qemu_cargo_toml['dependencies']:
+              patina_dxe_core_qemu_dep = patina_dxe_core_qemu_cargo_toml['dependencies']['patina']
+          else:
+              raise SystemExit('Unable to locate the patina crate dependency in patina-dxe-core-qemu Cargo.toml')
+
+          if isinstance(patina_dxe_core_qemu_dep, str):
+              patina_dxe_core_qemu_dep_version = patina_dxe_core_qemu_dep
+          elif isinstance(patina_dxe_core_qemu_dep, dict):
+              patina_dxe_core_qemu_dep_version = patina_dxe_core_qemu_dep.get('version', '')
+          else:
+              patina_dxe_core_qemu_dep_version = ''
+
+          dep_major_match = re.search(r'(\d+)', patina_dxe_core_qemu_dep_version)
+          if dep_major_match is None:
+              raise SystemExit(f'Unable to parse patina dependency major ver from: {patina_dxe_core_qemu_dep_version}')
+          patina_dxe_core_qemu_dep_major = int(dep_major_match.group(1))
+
+          mismatch = patina_local_major != patina_dxe_core_qemu_dep_major
+          output_file = pathlib.Path(os.environ['GITHUB_OUTPUT'])
+          with output_file.open('a', encoding='utf-8') as out:
+              out.write(f'patina_local_version={patina_local_version}\n')
+              out.write(f'patina_local_major={patina_local_major}\n')
+              out.write(f'patina_latest_tag={patina_latest_tag}\n')
+              out.write(f'patina_latest_major_tag={patina_latest_major_tag}\n')
+              out.write(f'patina_dxe_core_qemu_dep_version={patina_dxe_core_qemu_dep_version}\n')
+              out.write(f'patina_dxe_core_qemu_dep_major={patina_dxe_core_qemu_dep_major}\n')
+              out.write(f'mismatch={str(mismatch).lower()}\n')
+          PY
+
+      - name: Fail Due to Major Version Mismatch
+        if: steps.compare.outputs.mismatch == 'true'
+        shell: bash
+        run: |
+          echo "Patina QEMU validation failed due to major version mismatch in patina and patina-dxe-core-qemu."
+          exit 1
+
+      - name: Identify Latest patina-qemu FW Release Binaries
+        id: fw-assets
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          with open('.cache/github-files/patina-qemu-releases-latest.json', 'r', encoding='utf-8') as f:
+              release = json.loads(f.read())
+
+          tag = release['tag_name']
+          q35_name = f'patina-qemu-q35-{tag}.zip'
+          sbsa_name = f'patina-qemu-sbsa-{tag}.zip'
+
+          assets = {asset['name']: asset['browser_download_url'] for asset in release.get('assets', [])}
+          if q35_name not in assets:
+              raise SystemExit(f'Missing expected Q35 firmware asset: {q35_name}')
+          if sbsa_name not in assets:
+              raise SystemExit(f'Missing expected SBSA firmware asset: {sbsa_name}')
+
+          output_file = pathlib.Path(os.environ['GITHUB_OUTPUT'])
+          with output_file.open('a', encoding='utf-8') as out:
+              out.write(f'tag={tag}\n')
+              out.write(f'q35_url={assets[q35_name]}\n')
+              out.write(f'sbsa_url={assets[sbsa_name]}\n')
+          PY
+
+  validate-qemu-linux:
+    name: Validate QEMU - ${{ matrix.platform }} (Linux)
+    runs-on: ubuntu-latest
+    needs: [vars, preflight]
+    container:
+      image: ${{ needs.vars.outputs['container-image'] }}
+      volumes:
+        - /home/runner/work/_actions:/home/runner/work/_actions
+
+    # Directory layout mirrors the Windows job:
+    #
+    #   PATINA_REPO           - patina source (checkout target = workspace)
+    #   DEPS_DIR              - parent for cloned dependency repos
+    #   DXE_CORE_QEMU_REPO    - patina-dxe-core-qemu clone
+    #   FW_PATCHER_REPO       - patina-fw-patcher clone
+    #   PATINA_QEMU_REPO      - patina-qemu sparse clone
+    #   FW_DIR                - extracted pre-compiled firmware
+    #   LOG_DIR               - build & QEMU log output
+    env:
+      PATINA_REPO:         ${{ github.workspace }}
+      DEPS_DIR:            ${{ github.workspace }}/../deps
+      DXE_CORE_QEMU_REPO:  ${{ github.workspace }}/../deps/patina-dxe-core-qemu
+      FW_PATCHER_REPO:     ${{ github.workspace }}/../deps/patina-fw-patcher
+      PATINA_QEMU_REPO:    ${{ github.workspace }}/../deps/patina-qemu
+      FW_DIR:              ${{ github.workspace }}/firmware
+      LOG_DIR:             ${{ github.workspace }}/logs
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Q35
+            fw_zip: q35.zip
+            fw_cache_key_suffix: q35
+            rom_subpath: Q35/DEBUG-GCC5/QEMUQ35_CODE.fd
+            log_file: q35-linux.log
+          - platform: SBSA
+            fw_zip: sbsa.zip
+            fw_cache_key_suffix: sbsa
+            rom_subpath: SBSA/DEBUG-GCC5/QEMU_EFI.fd
+            log_file: sbsa-linux.log
+
+    steps:
+      - name: Checkout Patina
+        uses: actions/checkout@v6
+        with:
+          repository: OpenDevicePartnership/patina
+          ref: ${{ inputs.patina-ref }}
+
+      # In container jobs, ${{ github.workspace }} resolves to the HOST
+      # path which does not exist inside the container. The shell variable
+      # $GITHUB_WORKSPACE is correctly remapped to the container mount
+      # point. Override the job-level env vars so that every subsequent
+      # step and composite action input gets the container-correct paths.
+      - name: Fix Workspace Paths for Container
+        shell: bash
+        run: |
+          {
+            echo "PATINA_REPO=$GITHUB_WORKSPACE"
+            echo "DEPS_DIR=$GITHUB_WORKSPACE/../deps"
+            echo "DXE_CORE_QEMU_REPO=$GITHUB_WORKSPACE/../deps/patina-dxe-core-qemu"
+            echo "FW_PATCHER_REPO=$GITHUB_WORKSPACE/../deps/patina-fw-patcher"
+            echo "PATINA_QEMU_REPO=$GITHUB_WORKSPACE/../deps/patina-qemu"
+            echo "FW_DIR=$GITHUB_WORKSPACE/firmware"
+            echo "LOG_DIR=$GITHUB_WORKSPACE/logs"
+          } >> "$GITHUB_ENV"
+
+      - name: Create Directories
+        shell: bash
+        run: |
+          mkdir -p "$DEPS_DIR"
+          mkdir -p "$FW_DIR"
+          mkdir -p "$LOG_DIR"
+
+      - name: Setup Python (Linux)
+        shell: bash
+        run: python3 --version
+
+      - name: Download Rust Tools
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+
+      - name: Check Cache for patina-qemu FW Binary
+        id: firmware-cache
+        uses: actions/cache@v5
+        with:
+          path: .cache/patina-qemu/${{ matrix.fw_zip }}
+          key: patina-qemu-fw-${{ matrix.fw_cache_key_suffix }}-${{ runner.os }}-${{ needs.preflight.outputs.fw_release_tag }}
+
+      - name: Download patina-qemu FW Binary
+        if: steps.firmware-cache.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          FW_URL: ${{ matrix.platform == 'Q35' && needs.preflight.outputs.q35_fw_url || needs.preflight.outputs.sbsa_fw_url }}
+        run: |
+          mkdir -p .cache/patina-qemu
+          curl -L "$FW_URL" -o .cache/patina-qemu/${{ matrix.fw_zip }}
+
+      - name: Extract patina-qemu FW Binary
+        shell: bash
+        run: unzip -o .cache/patina-qemu/${{ matrix.fw_zip }} -d "$FW_DIR"
+
+      - name: Setup and Build patina-dxe-core-qemu
+        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
+        with:
+          deps-dir: ${{ env.DEPS_DIR }}
+          dxe-core-qemu-repo: ${{ env.DXE_CORE_QEMU_REPO }}
+          fw-patcher-repo: ${{ env.FW_PATCHER_REPO }}
+          log-file: ${{ env.LOG_DIR }}/${{ matrix.log_file }}
+          patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
+          patina-repo: ${{ env.PATINA_REPO }}
+
+      - name: Run QEMU Validation - ${{ matrix.platform }} (Linux)
+        uses: OpenDevicePartnership/patina-devops/.github/actions/run-patina-qemu-validation@main
+        with:
+          fw-patch-repo: ${{ env.FW_PATCHER_REPO }}
+          log-file: ${{ env.LOG_DIR }}/${{ matrix.log_file }}
+          no-build: 'true'
+          patina-dxe-core-repo: ${{ env.DXE_CORE_QEMU_REPO }}
+          patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
+          platform: ${{ matrix.platform }}
+          pre-compiled-rom: ${{ env.FW_DIR }}/${{ matrix.rom_subpath }}
+          shutdown-after-run: 'true'
+          toolchain: ${{ needs.vars.outputs['linux-toolchain'] }}
+
+      - name: Upload QEMU Linux ${{ matrix.platform }} Logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: qemu-validation-logs-${{ runner.os }}-${{ matrix.platform }}
+          path: ${{ env.LOG_DIR }}/*
+          if-no-files-found: warn
+
+  validate-qemu-windows:
+    name: Validate QEMU Q35 (Windows)
+    runs-on: windows-latest
+    needs: [vars, preflight]
+
+    # Directory layout mirrors the Linux job.
+    env:
+      PATINA_REPO:         ${{ github.workspace }}
+      DEPS_DIR:            ${{ github.workspace }}/../deps
+      DXE_CORE_QEMU_REPO:  ${{ github.workspace }}/../deps/patina-dxe-core-qemu
+      FW_PATCHER_REPO:     ${{ github.workspace }}/../deps/patina-fw-patcher
+      PATINA_QEMU_REPO:    ${{ github.workspace }}/../deps/patina-qemu
+      FW_DIR:              ${{ github.workspace }}/firmware
+      LOG_DIR:             ${{ github.workspace }}/logs
+
+    steps:
+      - name: Checkout Patina
+        uses: actions/checkout@v6
+        with:
+          repository: OpenDevicePartnership/patina
+          ref: ${{ inputs.patina-ref }}
+
+      - name: Create Directories
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path "$env:DEPS_DIR" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$env:FW_DIR" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$env:LOG_DIR" -Force | Out-Null
+
+      - name: Setup Python (Windows)
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ needs.vars.outputs['python-version'] }}
+
+      - name: Download Rust Tools
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+
+      - name: Check Cache for patina-qemu FW Binaries
+        id: firmware-cache
+        uses: actions/cache@v5
+        with:
+          path: |
+            .cache/patina-qemu/q35.zip
+            .cache/patina-qemu/sbsa.zip
+          key: patina-qemu-fw-${{ runner.os }}-${{ needs.preflight.outputs.fw_release_tag }}
+
+      - name: Download patina-qemu FW Binaries
+        if: steps.firmware-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .cache\patina-qemu -Force | Out-Null
+          Invoke-WebRequest -Uri "${{ needs.preflight.outputs.q35_fw_url }}" -OutFile ".cache\patina-qemu\q35.zip"
+          Invoke-WebRequest -Uri "${{ needs.preflight.outputs.sbsa_fw_url }}" -OutFile ".cache\patina-qemu\sbsa.zip"
+
+      - name: Extract patina-qemu FW Binaries
+        shell: pwsh
+        run: |
+          Expand-Archive -Path .cache\patina-qemu\q35.zip -DestinationPath "$env:FW_DIR" -Force
+          Expand-Archive -Path .cache\patina-qemu\sbsa.zip -DestinationPath "$env:FW_DIR" -Force
+
+      - name: Setup and Build patina-dxe-core-qemu
+        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
+        with:
+          deps-dir: ${{ env.DEPS_DIR }}
+          dxe-core-qemu-repo: ${{ env.DXE_CORE_QEMU_REPO }}
+          fw-patcher-repo: ${{ env.FW_PATCHER_REPO }}
+          log-file: ${{ env.LOG_DIR }}/q35-windows.log
+          patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
+          patina-repo: ${{ env.PATINA_REPO }}
+
+      - name: Resolve QEMU ext_dep YAML Cache Key
+        id: qemu-yaml-key
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN" }
+          $response = Invoke-RestMethod `
+            -Uri "https://api.github.com/repos/OpenDevicePartnership/patina-qemu/commits?path=QemuPkg/Binaries/qemu-windows_ext_dep.yaml&sha=main&per_page=1" `
+            -Headers $headers
+          $commitHash = $response[0].sha
+          if (-not $commitHash) {
+            Write-Error "::error::Failed to retrieve qemu-windows_ext_dep.yaml latest commit hash"
+            exit 1
+          }
+          Write-Host "qemu-windows_ext_dep.yaml latest commit: $commitHash"
+          "key=gh-files-qemu-yaml-$commitHash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Restore QEMU ext_dep YAML Cache
+        id: qemu-yaml-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: .cache/github-files/qemu-windows_ext_dep.yaml
+          key: ${{ steps.qemu-yaml-key.outputs.key }}
+
+      - name: Download QEMU ext_dep YAML
+        if: steps.qemu-yaml-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN" }
+          New-Item -ItemType Directory -Path .cache\github-files -Force | Out-Null
+          Invoke-WebRequest `
+            -Uri "https://raw.githubusercontent.com/OpenDevicePartnership/patina-qemu/refs/heads/main/QemuPkg/Binaries/qemu-windows_ext_dep.yaml" `
+            -Headers $headers `
+            -OutFile ".cache\github-files\qemu-windows_ext_dep.yaml"
+
+      - name: Save QEMU ext_dep YAML Cache
+        if: always() && steps.qemu-yaml-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: .cache/github-files/qemu-windows_ext_dep.yaml
+          key: ${{ steps.qemu-yaml-key.outputs.key }}
+
+      - name: Resolve Windows QEMU Package
+        id: windows-qemu
+        shell: pwsh
+        run: |
+          $yamlPath = ".cache\github-files\qemu-windows_ext_dep.yaml"
+          $text = Get-Content -Path $yamlPath -Raw
+          $zipUrl = ([regex]::Match($text, 'https?://[^\s\"\'']+\.zip')).Value
+          if (-not $zipUrl) { throw "Unable to find QEMU zip URL in qemu-windows_ext_dep.yaml" }
+          "zip-url=$zipUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Cache Windows QEMU Package
+        id: qemu-cache
+        uses: actions/cache@v5
+        with:
+          path: .cache/qemu/windows-qemu.zip
+          key: windows-qemu-${{ steps.windows-qemu.outputs.zip-url }}
+
+      - name: Download Windows QEMU Package
+        if: steps.qemu-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .cache\qemu -Force | Out-Null
+          Invoke-WebRequest -Uri "${{ steps.windows-qemu.outputs.zip-url }}" -OutFile ".cache\qemu\windows-qemu.zip"
+
+      - name: Extract Windows QEMU and Update PATH
+        id: qemu-path
+        shell: pwsh
+        run: |
+          Expand-Archive -Path ".cache\qemu\windows-qemu.zip" -DestinationPath ".cache\qemu\windows" -Force
+          $exe = Get-ChildItem -Path ".cache\qemu\windows" -Filter "qemu-system-x86_64.exe" -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "qemu-system-x86_64.exe not found after extracting Windows QEMU package" }
+          $dir = $exe.DirectoryName
+          # build_and_run_rust_binary.py --qemu-path expects the path to the
+          # executable (not the directory). Strip the .exe extension to match
+          # the script's default path convention.
+          $exePath = [System.IO.Path]::ChangeExtension($exe.FullName, $null).TrimEnd('.')
+          "$dir" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "qemu_exec=$exePath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Run QEMU Validation - Q35 (Windows)
+        uses: OpenDevicePartnership/patina-devops/.github/actions/run-patina-qemu-validation@main
+        with:
+          fw-patch-repo: ${{ env.FW_PATCHER_REPO }}
+          log-file: ${{ env.LOG_DIR }}/q35-windows.log
+          no-build: 'true'
+          patina-dxe-core-repo: ${{ env.DXE_CORE_QEMU_REPO }}
+          patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
+          platform: Q35
+          pre-compiled-rom: ${{ env.FW_DIR }}/Q35/DEBUG-VS2022/QEMUQ35_CODE.fd
+          qemu-path: ${{ steps.qemu-path.outputs.qemu_exec }}
+          shutdown-after-run: 'true'
+          toolchain: ${{ needs.vars.outputs['windows-toolchain'] }}
+
+      - name: Upload QEMU Windows Logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: qemu-validation-logs-${{ runner.os }}-Q35
+          path: ${{ env.LOG_DIR }}/*
+          if-no-files-found: warn
+
+  emit-pr-metadata:
+    name: Emit PR Metadata
+    runs-on: ubuntu-latest
+    needs: [preflight, validate-qemu-linux, validate-qemu-windows]
+    if: always()
+    steps:
+      - name: Write PR Metadata
+        shell: bash
+        run: |
+          mkdir -p metadata
+          python - <<'PY'
+          import json
+          import pathlib
+
+          preflight_result = '${{ needs.preflight.result }}'
+          linux_result = '${{ needs.validate-qemu-linux.result }}'
+          windows_result = '${{ needs.validate-qemu-windows.result }}'
+
+          metadata = {
+              'pr_number': ${{ inputs.pr-number }},
+              'patina_ref': '${{ inputs.patina-ref }}',
+              'readiness': {
+                  'job_result': preflight_result,
+                  'mismatch': '${{ needs.preflight.outputs.mismatch }}',
+                  'patina_local_version': '${{ needs.preflight.outputs.patina_local_version }}',
+                  'patina_local_major': '${{ needs.preflight.outputs.patina_local_major }}',
+                  'patina_latest_tag': '${{ needs.preflight.outputs.patina_latest_tag }}',
+                  'patina_latest_major_tag': '${{ needs.preflight.outputs.patina_latest_major_tag }}',
+                  'patina_dxe_core_qemu_dep_version': '${{ needs.preflight.outputs.patina_dxe_core_qemu_dep_version }}',
+                  'patina_dxe_core_qemu_dep_major': '${{ needs.preflight.outputs.patina_dxe_core_qemu_dep_major }}'
+              },
+              'validation': {
+                  'linux_result': linux_result,
+                  'windows_result': windows_result,
+                  'failed': (
+                      linux_result not in ('success', 'skipped') or
+                      windows_result not in ('success', 'skipped') or
+                      preflight_result != 'success'
+                  )
+              }
+          }
+
+          output_path = pathlib.Path('metadata/pr-metadata.json')
+          output_path.write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+          PY
+
+      - name: Upload PR Metadata Artifact
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: patina-qemu-pr-metadata
+          path: metadata/pr-metadata.json
+          if-no-files-found: error

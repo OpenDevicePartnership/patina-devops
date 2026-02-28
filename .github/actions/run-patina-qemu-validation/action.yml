@@ -1,0 +1,84 @@
+name: Run Patina QEMU Validation
+
+description: >-
+  Runs build_and_run_rust_binary.py routing stdout exclusively to a log file
+  and stderr to both the log file and the console. Works on Linux and Windows.
+  All paths are supplied by the caller — this action never assumes where
+  anything lives.
+
+inputs:
+  build-target:
+    description: Build target (e.g. DEBUG or RELEASE).
+    required: false
+    default: DEBUG
+  fw-patch-repo:
+    description: Absolute path to the patina-fw-patcher repository.
+    required: true
+  log-file:
+    description: Absolute path to the output log file.
+    required: true
+  no-build:
+    description: Skip building the firmware ('true' or 'false').
+    required: false
+    default: 'false'
+  patina-dxe-core-repo:
+    description: Absolute path to the patina-dxe-core-qemu repository.
+    required: true
+  patina-qemu-repo:
+    description: Absolute path to the patina-qemu repository containing build_and_run_rust_binary.py.
+    required: true
+  platform:
+    description: QEMU platform name (e.g. Q35 or SBSA).
+    required: true
+  pre-compiled-rom:
+    description: Absolute path to the pre-compiled firmware ROM file.
+    required: true
+  qemu-path:
+    description: Path to the QEMU executable.
+    required: false
+    default: ''
+  shutdown-after-run:
+    description: Shut down QEMU after running ('true' or 'false').
+    required: false
+    default: 'false'
+  toolchain:
+    description: Rust toolchain tag.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Run QEMU validation
+      shell: python
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        BUILD_TARGET: ${{ inputs.build-target }}
+        FW_PATCH_REPO: ${{ inputs.fw-patch-repo }}
+        LOG_FILE: ${{ inputs.log-file }}
+        NO_BUILD: ${{ inputs.no-build }}
+        PATINA_DXE_CORE_REPO: ${{ inputs.patina-dxe-core-repo }}
+        PATINA_QEMU_REPO: ${{ inputs.patina-qemu-repo }}
+        PLATFORM: ${{ inputs.platform }}
+        PRE_COMPILED_ROM: ${{ inputs.pre-compiled-rom }}
+        QEMU_PATH: ${{ inputs.qemu-path }}
+        SHUTDOWN_AFTER_RUN: ${{ inputs.shutdown-after-run }}
+        TOOLCHAIN: ${{ inputs.toolchain }}
+      run: |
+        import json, os, subprocess, sys
+
+        config = json.dumps({
+            "build_target": os.environ.get("BUILD_TARGET", "DEBUG"),
+            "fw_patch_repo": os.environ["FW_PATCH_REPO"],
+            "log_file": os.environ["LOG_FILE"],
+            "no_build": os.environ.get("NO_BUILD", "false").lower() == "true",
+            "patina_dxe_core_repo": os.environ["PATINA_DXE_CORE_REPO"],
+            "patina_qemu_repo": os.environ["PATINA_QEMU_REPO"],
+            "platform": os.environ["PLATFORM"],
+            "pre_compiled_rom": os.environ["PRE_COMPILED_ROM"],
+            "qemu_path": os.environ.get("QEMU_PATH", ""),
+            "shutdown_after_run": os.environ.get("SHUTDOWN_AFTER_RUN", "false").lower() == "true",
+            "toolchain": os.environ["TOOLCHAIN"],
+        })
+
+        script = os.path.join(os.environ["ACTION_PATH"], "run_qemu_validation.py")
+        sys.exit(subprocess.call([sys.executable, script, config]))

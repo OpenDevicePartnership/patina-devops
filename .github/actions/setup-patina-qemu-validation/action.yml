@@ -1,0 +1,99 @@
+name: Setup Patina QEMU Validation
+
+description: >-
+  Clone dependency repos into caller-specified directories, build
+  patina-dxe-core-qemu with a crate patch, and sparse-checkout the
+  patina-qemu run script.  Every path is supplied by the caller — this
+  action never assumes where anything lives.
+
+inputs:
+  patina-repo:
+    description: Absolute path to the patina repository root (used for crate patch).
+    required: true
+  deps-dir:
+    description: Absolute path to the parent directory for cloned dependency repos.
+    required: true
+  dxe-core-qemu-repo:
+    description: Absolute path where patina-dxe-core-qemu should be cloned.
+    required: true
+  fw-patcher-repo:
+    description: Absolute path where patina-fw-patcher should be cloned.
+    required: true
+  patina-qemu-repo:
+    description: Absolute path where patina-qemu should be sparse-cloned.
+    required: true
+  log-file:
+    description: >-
+      Absolute path to a log file. When set, build output is teed to this
+      file so that it is available as an artifact even when the build fails.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Clone patina-dxe-core-qemu
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ ! -d "${{ inputs.dxe-core-qemu-repo }}" ]; then
+          git clone https://github.com/OpenDevicePartnership/patina-dxe-core-qemu.git \
+            "${{ inputs.dxe-core-qemu-repo }}"
+        fi
+
+    - name: Clone patina-fw-patcher
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ ! -d "${{ inputs.fw-patcher-repo }}" ]; then
+          git clone https://github.com/OpenDevicePartnership/patina-fw-patcher.git \
+            "${{ inputs.fw-patcher-repo }}"
+        fi
+        chmod +x "${{ inputs.fw-patcher-repo }}/Executables/"*
+
+    - name: Sparse-checkout patina-qemu build script
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ ! -d "${{ inputs.patina-qemu-repo }}" ]; then
+          git clone --filter=blob:none --sparse --depth=1 \
+            --branch main \
+            https://github.com/OpenDevicePartnership/patina-qemu.git \
+            "${{ inputs.patina-qemu-repo }}"
+          cd "${{ inputs.patina-qemu-repo }}"
+          # MSYS_NO_PATHCONV prevents Git Bash (MSYS2) on Windows from
+          # converting the leading '/' in sparse-checkout patterns into
+          # Windows paths (e.g. C:/build_and_run_rust_binary.py).  The
+          # variable is harmless on Linux.
+          MSYS_NO_PATHCONV=1 git sparse-checkout set --no-cone /build_and_run_rust_binary.py /Platforms/Common/Qemu
+        fi
+
+    - name: Build patina-dxe-core-qemu with PR Changes
+      shell: bash
+      env:
+        BUILD_LOG_FILE: ${{ inputs.log-file }}
+      run: |
+        set -euo pipefail
+
+        # Ensure the log directory exists before tee attempts to write.
+        if [ -n "$BUILD_LOG_FILE" ]; then
+          mkdir -p "$(dirname "$BUILD_LOG_FILE")"
+        fi
+
+        # When a log file is configured, tee stdout+stderr to it so the
+        # build output is captured in the artifact even on failure.
+        run_cmd() {
+          if [ -n "$BUILD_LOG_FILE" ]; then
+            "$@" 2>&1 | tee -a "$BUILD_LOG_FILE"
+          else
+            "$@"
+          fi
+        }
+
+        cd "${{ inputs.dxe-core-qemu-repo }}"
+
+        run_cmd rustup component add rust-src
+        run_cmd cargo make q35 -- --crate-patch "${{ inputs.patina-repo }}" --leave-patch
+        run_cmd cargo make q35-release
+        run_cmd cargo make sbsa
+        run_cmd cargo make sbsa-release
