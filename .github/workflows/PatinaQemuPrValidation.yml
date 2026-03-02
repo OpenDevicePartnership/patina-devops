@@ -94,14 +94,15 @@ jobs:
     name: Preflight Checks
     runs-on: ubuntu-latest
     outputs:
+      assets_complete: ${{ steps.validate-qemu-assets.outputs.assets_complete }}
       fw_release_tag: ${{ steps.fw-assets.outputs.tag }}
+      mismatch: ${{ steps.compare.outputs.mismatch }}
       patina_local_version: ${{ steps.compare.outputs.patina_local_version }}
       patina_local_major: ${{ steps.compare.outputs.patina_local_major }}
       patina_latest_tag: ${{ steps.compare.outputs.patina_latest_tag }}
       patina_latest_major_tag: ${{ steps.compare.outputs.patina_latest_major_tag }}
       patina_dxe_core_qemu_dep_version: ${{ steps.compare.outputs.patina_dxe_core_qemu_dep_version }}
       patina_dxe_core_qemu_dep_major: ${{ steps.compare.outputs.patina_dxe_core_qemu_dep_major }}
-      mismatch: ${{ steps.compare.outputs.mismatch }}
       q35_fw_url: ${{ steps.fw-assets.outputs.q35_url }}
       sbsa_fw_url: ${{ steps.fw-assets.outputs.sbsa_url }}
     steps:
@@ -177,8 +178,38 @@ jobs:
             "https://api.github.com/repos/OpenDevicePartnership/patina-qemu/releases/latest" \
             -o .cache/github-files/patina-qemu-releases-latest.json
 
+      - name: Validate patina-qemu Release Assets
+        id: validate-qemu-assets
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          release_file = pathlib.Path('.cache/github-files/patina-qemu-releases-latest.json')
+          release = json.loads(release_file.read_text(encoding='utf-8'))
+          tag = release['tag_name']
+          assets = {a['name'] for a in release.get('assets', [])}
+
+          q35_name = f'patina-qemu-q35-{tag}.zip'
+          sbsa_name = f'patina-qemu-sbsa-{tag}.zip'
+
+          output_file = pathlib.Path(os.environ['GITHUB_OUTPUT'])
+          if q35_name in assets and sbsa_name in assets:
+              print(f'All expected firmware assets present for {tag}')
+              with output_file.open('a', encoding='utf-8') as out:
+                  out.write('assets_complete=true\n')
+          else:
+              missing = [n for n in (q35_name, sbsa_name) if n not in assets]
+              print(f'::warning::Missing firmware assets in patina-qemu {tag} release: {", ".join(missing)}')
+              print('Cache will not be saved - firmware zip files may still be uploading')
+              with output_file.open('a', encoding='utf-8') as out:
+                  out.write('assets_complete=false\n')
+          PY
+
       - name: Save GitHub API File Cache
-        if: always() && steps.gh-file-cache.outputs.cache-hit != 'true'
+        if: always() && steps.gh-file-cache.outputs.cache-hit != 'true' && steps.validate-qemu-assets.outputs.assets_complete == 'true'
         uses: actions/cache/save@v5
         with:
           path: .cache/github-files
@@ -257,6 +288,7 @@ jobs:
 
       - name: Identify Latest patina-qemu FW Release Binaries
         id: fw-assets
+        if: steps.validate-qemu-assets.outputs.assets_complete == 'true'
         shell: bash
         run: |
           python - <<'PY'
@@ -288,6 +320,7 @@ jobs:
     name: Validate QEMU - ${{ matrix.platform }} (Linux)
     runs-on: ubuntu-latest
     needs: [vars, preflight]
+    if: needs.preflight.outputs.assets_complete == 'true'
     container:
       image: ${{ needs.vars.outputs['container-image'] }}
       volumes:
@@ -420,6 +453,7 @@ jobs:
     name: Validate QEMU Q35 (Windows)
     runs-on: windows-latest
     needs: [vars, preflight]
+    if: needs.preflight.outputs.assets_complete == 'true'
 
     # Directory layout mirrors the Linux job.
     env:
@@ -617,6 +651,7 @@ jobs:
               'pr_number': ${{ inputs.pr-number }},
               'patina_ref': '${{ inputs.patina-ref }}',
               'readiness': {
+                  'assets_complete': '${{ needs.preflight.outputs.assets_complete }}',
                   'job_result': preflight_result,
                   'mismatch': '${{ needs.preflight.outputs.mismatch }}',
                   'patina_local_version': '${{ needs.preflight.outputs.patina_local_version }}',
