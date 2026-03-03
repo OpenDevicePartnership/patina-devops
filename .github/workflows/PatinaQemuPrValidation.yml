@@ -61,7 +61,7 @@ jobs:
               hiddenMarker,
               '## :hourglass_flowing_sand: QEMU Validation In Progress',
               '',
-              'A new QEMU validation run has started. Results from any previous run are now outdated.',
+              'A new QEMU validation run has started. Results from any previous run(s) are now outdated.',
               '',
               '> **Note:** Previous results are available in this comment\'s edit history.',
               '',
