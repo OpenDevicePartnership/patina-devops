@@ -75,12 +75,14 @@ jobs:
           write('patina_latest_major_tag', readiness.get('patina_latest_major_tag', ''))
           write('patina_dxe_core_qemu_dep_version', readiness.get('patina_dxe_core_qemu_dep_version', ''))
           write('patina_dxe_core_qemu_dep_major', readiness.get('patina_dxe_core_qemu_dep_major', ''))
+          write('skipped', str(data.get('skipped', False)).lower())
+          write('skip_reason', data.get('skip_reason', ''))
           validation = data.get('validation', {})
           write('validation_failed', 'true' if validation.get('failed') else 'false')
           PY
 
       - name: Comment on Firmware Assets Not Ready
-        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.assets_complete == 'false'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete == 'false'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token }}
@@ -136,7 +138,7 @@ jobs:
             }
 
       - name: Comment on Readiness Mismatch
-        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.readiness_mismatch == 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.readiness_mismatch == 'true'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token }}
@@ -194,7 +196,7 @@ jobs:
             }
 
       - name: Download QEMU Logs from Triggering Run
-        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
         id: download-logs
         continue-on-error: true
         uses: actions/download-artifact@v6
@@ -206,14 +208,14 @@ jobs:
           repository: ${{ github.repository }}
 
       - name: Extract Errors from QEMU Logs
-        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: OpenDevicePartnership/patina-devops/.github/actions/extract-build-errors@patina_e2e_plat_validation
         with:
           logs-dir: logs
           output-json: error-map.json
 
       - name: Comment on QEMU Validation Failure
-        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token }}
@@ -416,7 +418,7 @@ jobs:
             }
 
       - name: Download QEMU Logs for Timing
-        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         id: download-timing-logs
         continue-on-error: true
         uses: actions/download-artifact@v6
@@ -428,7 +430,7 @@ jobs:
           run-id: ${{ inputs.triggering-run-id }}
 
       - name: Parse Timing Data
-        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         id: timing
         shell: bash
         run: |
@@ -466,7 +468,7 @@ jobs:
           PY
 
       - name: Comment on QEMU Validation Success
-        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: actions/github-script@v8
         with:
           github-token: ${{ steps.app-token.outputs.token }}
@@ -523,6 +525,71 @@ jobs:
               '',
               `**Workflow run:** ${runUrl}`,
               timingSection,
+              marker,
+            ].join('\n');
+
+            if (existingComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existingComment.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number,
+                body,
+              });
+            }
+
+      - name: Comment on PR Skipped
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped == 'true'
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
+            const hiddenMarker = '<!-- patina-qemu-validation-result -->';
+            const workflowName = '${{ github.workflow }}';
+            const workflowUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/${'${{ github.workflow_ref }}'.split('@')[0].split('/').pop()}`;
+            const marker = `*This comment was automatically generated by the [${workflowName}](${workflowUrl}) workflow.*`;
+            const runId = Number('${{ inputs.triggering-run-id }}');
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+            const skipReason = '${{ steps.metadata.outputs.skip_reason }}';
+
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number,
+            });
+
+            const existingComment = comments.data.find((comment) =>
+              comment.body.includes(hiddenMarker)
+            );
+
+            let title;
+            let message;
+
+            if (skipReason === 'merged') {
+              title = ':information_source: QEMU Validation Skipped - PR Merged';
+              message = 'The Patina QEMU PR validation workflow did not run because the PR was merged before validation started.';
+            } else {
+              title = ':information_source: QEMU Validation Skipped - PR Branch Unavailable';
+              message = 'The Patina QEMU PR validation workflow did not run because the PR branch is no longer accessible.';
+            }
+
+            const body = [
+              hiddenMarker,
+              `## ${title}`,
+              '',
+              message,
+              '',
+              `**Workflow run:** ${runUrl}`,
+              '',
+              '> **Note:** Previous results are available in this comment\'s edit history.',
+              '',
               marker,
             ].join('\n');
 
