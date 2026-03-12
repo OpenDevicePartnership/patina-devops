@@ -58,13 +58,13 @@ jobs:
         run: cargo make vet
 
       - name: Run cargo-fmt
-        run: cargo fmt --all --check
+        run: cargo make fmt-check
 
       - name: Run cargo-deny
         run: cargo make deny
 
       - name: Test Documentation
-        run: cargo test --doc
+        run: cargo make doc-test
 
       - name: Build documentation
         run: cargo make doc
