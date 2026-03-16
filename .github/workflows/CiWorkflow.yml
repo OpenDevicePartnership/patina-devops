@@ -88,6 +88,9 @@ jobs:
       - name: Run cargo-clippy
         run: cargo make clippy
 
+      - name: Check no-default-features
+        run: cargo make check-no-default-features
+
       - name: 🧪 Run Tests 🧪
         run: cargo make coverage
 
