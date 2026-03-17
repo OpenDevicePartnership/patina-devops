@@ -447,12 +447,13 @@ jobs:
                   try:
                       data = json.loads(timing_file.read_text(encoding='utf-8'))
 
-                      # Derive a label from the artifact directory and file stem.
-                      # e.g. "qemu-validation-logs-Linux-Q35/q35-linux" -> "Linux Q35"
+                      # Derive the QEMU platform name and host OS from the artifact directory.
+                      # Artifact dir format: "qemu-validation-logs-{OS}" or "qemu-validation-logs-{OS}-{Platform}"
+                      # e.g. "qemu-validation-logs-Linux-Q35" -> "Q35 (Linux Host)"
                       artifact_dir = timing_file.relative_to(logs_dir).parts[0]
-
-                      # Strip the common prefix to get the OS/platform suffix.
-                      label = artifact_dir.replace('qemu-validation-logs-', '').replace('-', ' ')
+                      suffix = artifact_dir.removeprefix('qemu-validation-logs-')
+                      host_os, _, platform = suffix.partition('-')
+                      label = f'{platform} ({host_os} Host)' if platform else host_os
 
                       timing_entries.append({
                           'label': label,
@@ -521,7 +522,7 @@ jobs:
               '',
               'All QEMU validation jobs completed successfully.',
               '',
-              '> **Note:** Windows Q35 is only built (QEMU boot is disabled due to QEMU vfat issue).',
+              '> **Note:** Q35 is only built on Windows hosts (QEMU boot is disabled due to a QEMU vfat issue).',
               '',
               `**Workflow run:** ${runUrl}`,
               timingSection,
