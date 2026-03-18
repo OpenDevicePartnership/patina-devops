@@ -95,14 +95,18 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       assets_complete: ${{ steps.validate-qemu-assets.outputs.assets_complete }}
+      dxe_core_qemu_sha: ${{ steps.dep-shas.outputs.dxe_core_qemu_sha }}
+      fw_patcher_sha: ${{ steps.dep-shas.outputs.fw_patcher_sha }}
       fw_release_tag: ${{ steps.fw-assets.outputs.tag }}
       mismatch: ${{ steps.compare.outputs.mismatch }}
-      patina_local_version: ${{ steps.compare.outputs.patina_local_version }}
-      patina_local_major: ${{ steps.compare.outputs.patina_local_major }}
-      patina_latest_tag: ${{ steps.compare.outputs.patina_latest_tag }}
-      patina_latest_major_tag: ${{ steps.compare.outputs.patina_latest_major_tag }}
-      patina_dxe_core_qemu_dep_version: ${{ steps.compare.outputs.patina_dxe_core_qemu_dep_version }}
       patina_dxe_core_qemu_dep_major: ${{ steps.compare.outputs.patina_dxe_core_qemu_dep_major }}
+      patina_dxe_core_qemu_dep_version: ${{ steps.compare.outputs.patina_dxe_core_qemu_dep_version }}
+      patina_latest_major_tag: ${{ steps.compare.outputs.patina_latest_major_tag }}
+      patina_latest_tag: ${{ steps.compare.outputs.patina_latest_tag }}
+      patina_local_major: ${{ steps.compare.outputs.patina_local_major }}
+      patina_local_version: ${{ steps.compare.outputs.patina_local_version }}
+      patina_qemu_fw_tag: ${{ steps.validate-qemu-assets.outputs.patina_qemu_fw_tag }}
+      patina_qemu_sha: ${{ steps.dep-shas.outputs.patina_qemu_sha }}
       q35_fw_url: ${{ steps.fw-assets.outputs.q35_url }}
       sbsa_fw_url: ${{ steps.fw-assets.outputs.sbsa_url }}
     steps:
@@ -196,6 +200,9 @@ jobs:
           sbsa_name = f'patina-qemu-sbsa-{tag}.zip'
 
           output_file = pathlib.Path(os.environ['GITHUB_OUTPUT'])
+          with output_file.open('a', encoding='utf-8') as out:
+              out.write(f'patina_qemu_fw_tag={tag}\n')
+
           if q35_name in assets and sbsa_name in assets:
               print(f'All expected firmware assets present for {tag}')
               with output_file.open('a', encoding='utf-8') as out:
@@ -214,6 +221,33 @@ jobs:
         with:
           path: .cache/github-files
           key: ${{ steps.cache-keys.outputs.key }}
+
+      - name: Resolve Dependency Commit SHAs
+        id: dep-shas
+        shell: bash
+        run: |
+          set -euo pipefail
+          resolve_sha() {
+            local sha
+            sha=$(git ls-remote "$1" "$2" | cut -f1)
+            if [ -z "$sha" ]; then
+              echo "::warning::Failed to resolve HEAD SHA for $1 $2"
+            fi
+            echo "$sha"
+          }
+
+          dxe_sha=$(resolve_sha https://github.com/OpenDevicePartnership/patina-dxe-core-qemu.git main)
+          fw_sha=$(resolve_sha https://github.com/OpenDevicePartnership/patina-fw-patcher.git main)
+          qemu_sha=$(resolve_sha https://github.com/OpenDevicePartnership/patina-qemu.git main)
+
+          echo "dxe_core_qemu_sha=$dxe_sha" >> "$GITHUB_OUTPUT"
+          echo "fw_patcher_sha=$fw_sha" >> "$GITHUB_OUTPUT"
+          echo "patina_qemu_sha=$qemu_sha" >> "$GITHUB_OUTPUT"
+
+          echo "Dependency SHAs resolved:"
+          echo "  patina-dxe-core-qemu: $dxe_sha"
+          echo "  patina-fw-patcher:    $fw_sha"
+          echo "  patina-qemu:          $qemu_sha"
 
       - name: Check Major Version Compatibility
         id: compare
@@ -659,7 +693,14 @@ jobs:
                   'patina_latest_tag': '${{ needs.preflight.outputs.patina_latest_tag }}',
                   'patina_latest_major_tag': '${{ needs.preflight.outputs.patina_latest_major_tag }}',
                   'patina_dxe_core_qemu_dep_version': '${{ needs.preflight.outputs.patina_dxe_core_qemu_dep_version }}',
-                  'patina_dxe_core_qemu_dep_major': '${{ needs.preflight.outputs.patina_dxe_core_qemu_dep_major }}'
+                  'patina_dxe_core_qemu_dep_major': '${{ needs.preflight.outputs.patina_dxe_core_qemu_dep_major }}',
+              },
+              'deps': {
+                  'dxe_core_qemu_sha': '${{ needs.preflight.outputs.dxe_core_qemu_sha }}',
+                  'fw_patcher_sha': '${{ needs.preflight.outputs.fw_patcher_sha }}',
+                  'patina_qemu_fw_tag': '${{ needs.preflight.outputs.patina_qemu_fw_tag }}',
+                  'patina_qemu_sha': '${{ needs.preflight.outputs.patina_qemu_sha }}',
+                  'patina_ref': '${{ inputs.patina-ref }}',
               },
               'validation': {
                   'linux_result': linux_result,
