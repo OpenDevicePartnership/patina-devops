@@ -194,6 +194,7 @@ def main() -> int:
     if config.get("qemu_path"):
         cmd += ["--qemu-path", config["qemu_path"]]
     cmd.append("--headless")
+    cmd.append("--do-not-exit-on-patina-test-failure")
     if config.get("no_build"):
         cmd.append("--no-build")
     if config.get("shutdown_after_run"):

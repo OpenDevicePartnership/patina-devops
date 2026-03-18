@@ -93,7 +93,7 @@ runs:
         cd "${{ inputs.dxe-core-qemu-repo }}"
 
         run_cmd rustup component add rust-src
-        run_cmd cargo make q35 -- --crate-patch "${{ inputs.patina-repo }}" --leave-patch
-        run_cmd cargo make q35-release
-        run_cmd cargo make sbsa
-        run_cmd cargo make sbsa-release
+        run_cmd cargo make q35 -- --crate-patch "${{ inputs.patina-repo }}" --leave-patch --exclude-features exit_on_patina_test_failure
+        run_cmd cargo make q35-release -- --exclude-features exit_on_patina_test_failure
+        run_cmd cargo make sbsa -- --exclude-features exit_on_patina_test_failure
+        run_cmd cargo make sbsa-release -- --exclude-features exit_on_patina_test_failure
