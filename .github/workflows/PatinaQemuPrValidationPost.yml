@@ -66,6 +66,7 @@ jobs:
                   f.write(f"{name}={value}\n")
 
           write('pr_number', data.get('pr_number', ''))
+          write('mode', data.get('mode', 'patina'))
           readiness = data.get('readiness', {})
           write('assets_complete', readiness.get('assets_complete', 'true'))
           write('readiness_mismatch', readiness.get('mismatch', 'false'))
@@ -204,16 +205,31 @@ jobs:
               comment.body.includes(hiddenMarker)
             );
 
+            const mode = '${{ steps.metadata.outputs.mode }}';
+            let mismatchDescription;
+            if (mode === 'dxe-core-qemu') {
+              mismatchDescription = [
+                'The patina dependency version in this PR is not compatible with the latest published patina release.',
+                '',
+                `- patina dependency in patina-dxe-core-qemu: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_version }}\` (major: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_major }}\`)`,
+                `- Latest published patina release: \`${{ steps.metadata.outputs.patina_latest_tag }}\` (major: \`${{ steps.metadata.outputs.patina_latest_major_tag }}\`)`,
+              ];
+            } else {
+              mismatchDescription = [
+                'patina-dxe-core-qemu needs to be updated before QEMU validation can run.',
+                '',
+                `- Local patina workspace version: \`${{ steps.metadata.outputs.patina_local_version }}\` (major: \`${{ steps.metadata.outputs.patina_local_major }}\`)`,
+                `- patina dependency in patina-dxe-core-qemu: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_version }}\` (major: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_major }}\`)`,
+                '- Latest release (informational only):',
+                `  - Latest patina release major: \`${{ steps.metadata.outputs.patina_latest_major_tag }}\` (tag: \`${{ steps.metadata.outputs.patina_latest_tag }}\`)`,
+              ];
+            }
+
             const body = [
               hiddenMarker,
               '## :x: QEMU Readiness Check Failed',
               '',
-              'patina-dxe-core-qemu needs to be updated before QEMU validation can run.',
-              '',
-              `- Local patina workspace version: \`${{ steps.metadata.outputs.patina_local_version }}\` (major: \`${{ steps.metadata.outputs.patina_local_major }}\`)`,
-              `- patina dependency in patina-dxe-core-qemu: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_version }}\` (major: \`${{ steps.metadata.outputs.patina_dxe_core_qemu_dep_major }}\`)`,
-              '- Latest release (informational only):',
-              `  - Latest patina release major: \`${{ steps.metadata.outputs.patina_latest_major_tag }}\` (tag: \`${{ steps.metadata.outputs.patina_latest_tag }}\`)`,
+              ...mismatchDescription,
               '',
               `**Workflow run:** ${runUrl}`,
               ...(depsSection ? ['', depsSection] : []),
@@ -406,6 +422,23 @@ jobs:
                   ).join('\n')
                 : '_No log artifacts found._';
 
+            const mode = '${{ steps.metadata.outputs.mode }}';
+            let buildFailureHint;
+            if (mode === 'dxe-core-qemu') {
+              buildFailureHint = [
+                '> **Note:** Review the build logs to determine if the failure is',
+                '> caused by the PR changes or by an incompatible published patina crate version.',
+              ].join('\n');
+            } else {
+              buildFailureHint = [
+                '> **Is this expected?** If the PR introduces breaking changes to patina that',
+                '> require a corresponding update to [patina-dxe-core-qemu](https://github.com/OpenDevicePartnership/patina-dxe-core-qemu),',
+                '> the build failure is expected.',
+                '> ',
+                '> Contact a repo admin or PR reviewer to override the `Patina QEMU PR Validation` status check.',
+              ].join('\n');
+            }
+
               buildFailureSection = [
                 '### :warning: Build Failure Detected',
                 '',
@@ -420,11 +453,7 @@ jobs:
                 'Download the log artifacts from the workflow run to review the build output and',
                 'determine whether the error is expected.',
                 '',
-                '> **Is this expected?** If the PR introduces breaking changes to patina that',
-                '> require a corresponding update to [patina-dxe-core-qemu](https://github.com/OpenDevicePartnership/patina-dxe-core-qemu),',
-                '> the build failure is expected.',
-                '> ',
-                '> Contact a repo admin or PR reviewer to override the `Patina QEMU PR Validation` status check.',
+                buildFailureHint,
                 '',
               ].join('\n');
             }
