@@ -31,6 +31,11 @@ on:
         required: false
         type: string
         default: ''
+      head-sha:
+        description: "PR head commit SHA for commit status updates. When empty, no commit status is created."
+        required: false
+        type: string
+        default: ''
       pr-number:
         description: "Pull request number in the caller repository"
         required: true
@@ -103,6 +108,23 @@ jobs:
                 body,
               });
             }
+
+      - name: Set In-Progress Commit Status
+        if: inputs.head-sha != ''
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: '${{ inputs.head-sha }}',
+              state: 'pending',
+              description: 'QEMU validation in progress',
+              context: 'Patina QEMU PR Validation',
+              target_url: runUrl,
+            });
 
   vars:
     name: Get Constants
@@ -763,6 +785,7 @@ jobs:
           metadata = {
               'pr_number': ${{ inputs.pr-number }},
               'mode': '${{ needs.preflight.outputs.mode }}',
+              'head_sha': '${{ inputs.head-sha }}',
               'patina_ref': '${{ inputs.patina-ref || needs.preflight.outputs.patina_sha }}',
               'readiness': {
                   'assets_complete': '${{ needs.preflight.outputs.assets_complete }}',

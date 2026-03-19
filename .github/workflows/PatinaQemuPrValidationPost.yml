@@ -9,6 +9,16 @@ name: Patina QEMU PR Validation Post
 on:
   workflow_call:
     inputs:
+      conclusion:
+        description: "Conclusion of the triggering workflow run (e.g. success, failure, cancelled). Used to set commit status when metadata is unavailable."
+        required: false
+        type: string
+        default: ''
+      head-sha:
+        description: "PR head commit SHA for commit status fallback when metadata is unavailable."
+        required: false
+        type: string
+        default: ''
       triggering-run-id:
         description: "Workflow run ID of the completed Patina QEMU PR Validation run"
         required: true
@@ -67,6 +77,7 @@ jobs:
 
           write('pr_number', data.get('pr_number', ''))
           write('mode', data.get('mode', 'patina'))
+          write('head_sha', data.get('head_sha', ''))
           readiness = data.get('readiness', {})
           write('assets_complete', readiness.get('assets_complete', 'true'))
           write('readiness_mismatch', readiness.get('mismatch', 'false'))
@@ -686,3 +697,73 @@ jobs:
                 body,
               });
             }
+
+      - name: Set Final Commit Status
+        if: always()
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            // Prefer head_sha from metadata, but fall back to the workflow input.
+            const headSha = '${{ steps.metadata.outputs.head_sha }}' || '${{ inputs.head-sha }}';
+            if (!headSha) {
+              core.notice('No head SHA available — skipping commit status update.');
+              return;
+            }
+
+            const runId = Number('${{ inputs.triggering-run-id }}');
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
+            const metadataAvailable = '${{ steps.download-metadata.outcome }}' === 'success';
+            const conclusion = '${{ inputs.conclusion }}';
+
+            let state;
+            let description;
+
+            if (!metadataAvailable) {
+              // No metadata — use the workflow conclusion directly.
+              if (conclusion === 'skipped') {
+                state = 'success';
+                description = 'QEMU validation was skipped';
+              } else if (conclusion === 'cancelled') {
+                state = 'error';
+                description = 'QEMU validation was cancelled';
+              } else if (conclusion === 'failure') {
+                state = 'failure';
+                description = 'QEMU validation failed';
+              } else {
+                state = 'error';
+                description = 'QEMU validation ended without results';
+              }
+            } else {
+              const assetsComplete = '${{ steps.metadata.outputs.assets_complete }}';
+              const mismatch = '${{ steps.metadata.outputs.readiness_mismatch }}' === 'true';
+              const skipped = '${{ steps.metadata.outputs.skipped }}' === 'true';
+              const validationFailed = '${{ steps.metadata.outputs.validation_failed }}' === 'true';
+
+              if (skipped) {
+                state = 'success';
+                description = 'Skipped — PR was closed or merged';
+              } else if (assetsComplete === 'false') {
+                state = 'pending';
+                description = 'Firmware assets not ready — will retry';
+              } else if (mismatch) {
+                state = 'failure';
+                description = 'Major version mismatch between patina and patina-dxe-core-qemu';
+              } else if (validationFailed) {
+                state = 'failure';
+                description = 'QEMU validation failed';
+              } else {
+                state = 'success';
+                description = 'QEMU validation passed';
+              }
+            }
+
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: headSha,
+              state,
+              description,
+              context: 'Patina QEMU PR Validation',
+              target_url: runUrl,
+            });
