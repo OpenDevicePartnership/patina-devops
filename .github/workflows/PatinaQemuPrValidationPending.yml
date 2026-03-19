@@ -17,6 +17,11 @@ on:
         description: "Pull request number in the caller repository"
         required: true
         type: number
+      head-sha:
+        description: "PR head commit SHA for commit status updates. When empty, no commit status is created."
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -79,3 +84,18 @@ jobs:
                 body,
               });
             }
+
+      - name: Set Pending Commit Status
+        if: inputs.head-sha != ''
+        uses: actions/github-script@v8
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: '${{ inputs.head-sha }}',
+              state: 'pending',
+              description: 'Waiting for CI to complete',
+              context: 'Patina QEMU PR Validation',
+            });
