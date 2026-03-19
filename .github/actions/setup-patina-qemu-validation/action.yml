@@ -8,11 +8,22 @@ description: >-
 
 inputs:
   patina-repo:
-    description: Absolute path to the patina repository root (used for crate patch).
-    required: true
+    description: >-
+      Absolute path to the patina repository root (used for crate patch).
+      When empty, no crate patch is applied and patina dependencies resolve
+      from the registry.
+    required: false
+    default: ''
   deps-dir:
     description: Absolute path to the parent directory for cloned dependency repos.
     required: true
+  dxe-core-qemu-ref:
+    description: >-
+      Branch, tag, or commit SHA to checkout for patina-dxe-core-qemu.
+      Ignored when dxe-core-qemu-repo already exists (e.g. when the caller
+      checked it out to the workspace). Defaults to the repo default branch.
+    required: false
+    default: ''
   dxe-core-qemu-repo:
     description: Absolute path where patina-dxe-core-qemu should be cloned.
     required: true
@@ -34,11 +45,18 @@ runs:
   steps:
     - name: Clone patina-dxe-core-qemu
       shell: bash
+      env:
+        DXE_REF: ${{ inputs.dxe-core-qemu-ref }}
       run: |
         set -euo pipefail
         if [ ! -d "${{ inputs.dxe-core-qemu-repo }}" ]; then
           git clone https://github.com/OpenDevicePartnership/patina-dxe-core-qemu.git \
             "${{ inputs.dxe-core-qemu-repo }}"
+          if [ -n "$DXE_REF" ]; then
+            cd "${{ inputs.dxe-core-qemu-repo }}"
+            git fetch origin "$DXE_REF"
+            git checkout FETCH_HEAD
+          fi
         fi
 
     - name: Clone patina-fw-patcher
@@ -72,6 +90,7 @@ runs:
       shell: bash
       env:
         BUILD_LOG_FILE: ${{ inputs.log-file }}
+        PATINA_REPO: ${{ inputs.patina-repo }}
       run: |
         set -euo pipefail
 
@@ -93,7 +112,15 @@ runs:
         cd "${{ inputs.dxe-core-qemu-repo }}"
 
         run_cmd rustup component add rust-src
-        run_cmd cargo make q35 -- --crate-patch "${{ inputs.patina-repo }}" --leave-patch --exclude-features exit_on_patina_test_failure
+
+        # When a patina repo path is provided, apply a crate patch so that
+        # the build uses the local (potentially unreleased) patina source.
+        # Otherwise, dependencies resolve from the registry as-is.
+        if [ -n "$PATINA_REPO" ]; then
+          run_cmd cargo make q35 -- --crate-patch "$PATINA_REPO" --leave-patch --exclude-features exit_on_patina_test_failure
+        else
+          run_cmd cargo make q35 -- --exclude-features exit_on_patina_test_failure
+        fi
         run_cmd cargo make q35-release -- --exclude-features exit_on_patina_test_failure
         run_cmd cargo make sbsa -- --exclude-features exit_on_patina_test_failure
         run_cmd cargo make sbsa-release -- --exclude-features exit_on_patina_test_failure
