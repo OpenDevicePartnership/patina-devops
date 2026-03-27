@@ -33,8 +33,6 @@ JSON keys:
                       needed on Windows when QEMU is not on PATH. Default: "".
   shutdown_after_run  (bool, optional)    Shut down QEMU after running.
                       Default: false.
-  toolchain           (string, required)  Rust toolchain tag (e.g. "GCC5" or
-                      "VS2022").
 """
 
 import argparse
@@ -188,7 +186,6 @@ def main() -> int:
         "--patina-dxe-core-repo", config["patina_dxe_core_repo"],
         "--platform", config["platform"],
         "--pre-compiled-rom", config["pre_compiled_rom"],
-        "--toolchain", config["toolchain"],
     ]
 
     if config.get("qemu_path"):
