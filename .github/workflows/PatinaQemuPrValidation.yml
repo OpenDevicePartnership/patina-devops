@@ -479,12 +479,12 @@ jobs:
           - platform: Q35
             fw_zip: q35.zip
             fw_cache_key_suffix: q35
-            rom_subpath: Q35/DEBUG-GCC5/QEMUQ35_CODE.fd
+            rom_subpath: Q35/DEBUG Linux/QEMUQ35_CODE.fd
             log_file: q35-linux.log
           - platform: SBSA
             fw_zip: sbsa.zip
             fw_cache_key_suffix: sbsa
-            rom_subpath: SBSA/DEBUG-GCC5/QEMU_EFI.fd
+            rom_subpath: SBSA/DEBUG Linux/QEMU_EFI.fd
             log_file: sbsa-linux.log
 
     steps:
@@ -750,7 +750,7 @@ jobs:
           patina-dxe-core-repo: ${{ env.DXE_CORE_QEMU_REPO }}
           patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
           platform: Q35
-          pre-compiled-rom: ${{ env.FW_DIR }}/Q35/DEBUG-VS2022/QEMUQ35_CODE.fd
+          pre-compiled-rom: ${{ env.FW_DIR }}/Q35/DEBUG Windows/QEMUQ35_CODE.fd
           qemu-path: ${{ steps.qemu-path.outputs.qemu_exec }}
           shutdown-after-run: 'true'
 
