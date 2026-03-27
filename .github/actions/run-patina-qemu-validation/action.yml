@@ -41,9 +41,6 @@ inputs:
     description: Shut down QEMU after running ('true' or 'false').
     required: false
     default: 'false'
-  toolchain:
-    description: Rust toolchain tag.
-    required: true
 
 runs:
   using: composite
@@ -62,7 +59,6 @@ runs:
         PRE_COMPILED_ROM: ${{ inputs.pre-compiled-rom }}
         QEMU_PATH: ${{ inputs.qemu-path }}
         SHUTDOWN_AFTER_RUN: ${{ inputs.shutdown-after-run }}
-        TOOLCHAIN: ${{ inputs.toolchain }}
       run: |
         import json, os, subprocess, sys
 
@@ -77,7 +73,6 @@ runs:
             "pre_compiled_rom": os.environ["PRE_COMPILED_ROM"],
             "qemu_path": os.environ.get("QEMU_PATH", ""),
             "shutdown_after_run": os.environ.get("SHUTDOWN_AFTER_RUN", "false").lower() == "true",
-            "toolchain": os.environ["TOOLCHAIN"],
         })
 
         script = os.path.join(os.environ["ACTION_PATH"], "run_qemu_validation.py")

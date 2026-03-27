@@ -574,7 +574,6 @@ jobs:
           platform: ${{ matrix.platform }}
           pre-compiled-rom: ${{ env.FW_DIR }}/${{ matrix.rom_subpath }}
           shutdown-after-run: 'true'
-          toolchain: ${{ needs.vars.outputs['linux-toolchain'] }}
 
       - name: Upload QEMU Linux ${{ matrix.platform }} Logs
         if: always()
@@ -754,7 +753,6 @@ jobs:
           pre-compiled-rom: ${{ env.FW_DIR }}/Q35/DEBUG-VS2022/QEMUQ35_CODE.fd
           qemu-path: ${{ steps.qemu-path.outputs.qemu_exec }}
           shutdown-after-run: 'true'
-          toolchain: ${{ needs.vars.outputs['windows-toolchain'] }}
 
       - name: Upload QEMU Windows Logs
         if: always()
