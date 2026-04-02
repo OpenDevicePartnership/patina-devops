@@ -44,7 +44,7 @@ jobs:
       - name: Download PR Metadata from Triggering Run
         id: download-metadata
         continue-on-error: true
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: patina-qemu-pr-metadata
           path: metadata
@@ -270,7 +270,7 @@ jobs:
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
         id: download-logs
         continue-on-error: true
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: qemu-validation-logs-*
           path: logs
@@ -507,7 +507,7 @@ jobs:
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         id: download-timing-logs
         continue-on-error: true
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           path: logs
