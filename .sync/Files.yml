@@ -575,6 +575,25 @@ group:
       OpenDevicePartnership/patina-readiness-tool
 
 ###############################################################################
+# Workflows - Pull Request Formatting Validation
+###############################################################################
+
+# Workflow - Label Issues
+  - files:
+    - source: .sync/workflows/leaf/pull-request-formatting-validator.yml
+      dest: .github/workflows/pull-request-formatting-validator.yml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-edk2
+      OpenDevicePartnership/patina-fw-patcher
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-qemu
+      OpenDevicePartnership/patina-readiness-tool
+
+###############################################################################
 # Workflows - Release Management
 ###############################################################################
 
