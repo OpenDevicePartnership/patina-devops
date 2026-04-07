@@ -98,6 +98,8 @@ group:
           - '/target'
           - 'BuildConfig.conf'
           - 'tags/'
+          - '*secure_mm.log'
+          - '*secure.log'
     repos: |
       OpenDevicePartnership/patina-edk2
       OpenDevicePartnership/patina-qemu
