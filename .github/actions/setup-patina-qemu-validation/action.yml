@@ -117,6 +117,8 @@ runs:
         # the build uses the local (potentially unreleased) patina source.
         # Otherwise, dependencies resolve from the registry as-is.
         if [ -n "$PATINA_REPO" ]; then
+          run_cmd cargo make q35 -- --crate-patch "$PATINA_REPO" --leave-patch --no-build --exclude-features exit_on_patina_test_failure
+          run_cmd cargo update
           run_cmd cargo make q35 -- --crate-patch "$PATINA_REPO" --leave-patch --exclude-features exit_on_patina_test_failure
         else
           run_cmd cargo make q35 -- --exclude-features exit_on_patina_test_failure
