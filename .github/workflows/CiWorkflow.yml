@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload Coverage Report
         if: github.repository_owner == 'OpenDevicePartnership'
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: target/lcov.info
