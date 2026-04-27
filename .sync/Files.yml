@@ -29,6 +29,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-mtrr
       OpenDevicePartnership/patina-paging
       OpenDevicePartnership/patina-readiness-tool
@@ -44,6 +45,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -73,6 +75,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-fw-patcher
       OpenDevicePartnership/patina-mtrr
@@ -111,6 +114,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -131,6 +135,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -151,6 +156,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-fw-patcher
       OpenDevicePartnership/patina-mtrr
@@ -158,6 +164,8 @@ group:
       OpenDevicePartnership/patina-readiness-tool
 
 # Rust Configuration - Cargo Deny
+# Note: Due to the diverse nature of content expected in the patina-components repo, deny.toml is not synced
+#       to that repo at this time.
   - files:
     - source: .sync/rust/deny.toml
       dest: deny.toml
@@ -236,6 +244,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-fw-patcher
       OpenDevicePartnership/patina-mtrr
@@ -260,6 +269,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-fw-patcher
       OpenDevicePartnership/patina-mtrr
@@ -277,6 +287,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
       OpenDevicePartnership/patina-fw-patcher
@@ -292,6 +303,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -308,6 +320,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -324,6 +337,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -340,6 +354,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
       OpenDevicePartnership/patina-fw-patcher
@@ -373,6 +388,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -389,6 +405,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -405,6 +422,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -421,6 +439,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -500,6 +519,19 @@ group:
       OpenDevicePartnership/patina-mtrr
       OpenDevicePartnership/patina-paging
 
+# CI Workflow: patina-components
+  - files:
+    - source: .sync/workflows/leaf/ci-workflow.yml
+      dest: .github/workflows/ci-workflow.yml
+      template:
+        build_tasks:
+          - "build"
+        run_cargo_vet: false
+        trigger_branches:
+          - "main"
+    repos: |
+      OpenDevicePartnership/patina-components
+
 ###############################################################################
 # Workflows - Issue Triager
 ###############################################################################
@@ -511,6 +543,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -528,6 +561,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
       OpenDevicePartnership/patina-fw-patcher
@@ -552,6 +586,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
       OpenDevicePartnership/patina-fw-patcher
@@ -568,6 +603,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
       OpenDevicePartnership/patina-fw-patcher
@@ -587,6 +623,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
       OpenDevicePartnership/patina-fw-patcher
@@ -653,6 +690,7 @@ group:
         tag_prefix: 'v'
     repos: |
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
@@ -670,6 +708,7 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-devops
       OpenDevicePartnership/patina-dxe-core-qemu
       OpenDevicePartnership/patina-edk2
