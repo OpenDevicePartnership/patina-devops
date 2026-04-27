@@ -44,7 +44,7 @@ jobs:
       - name: Download PR Metadata from Triggering Run
         id: download-metadata
         continue-on-error: true
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: patina-qemu-pr-metadata
           path: metadata
@@ -135,7 +135,7 @@ jobs:
 
       - name: Comment on Firmware Assets Not Ready
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete == 'false'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
@@ -193,7 +193,7 @@ jobs:
 
       - name: Comment on Readiness Mismatch
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.readiness_mismatch == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
@@ -270,7 +270,7 @@ jobs:
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
         id: download-logs
         continue-on-error: true
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           pattern: qemu-validation-logs-*
           path: logs
@@ -287,7 +287,7 @@ jobs:
 
       - name: Comment on QEMU Validation Failure
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
@@ -507,7 +507,7 @@ jobs:
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         id: download-timing-logs
         continue-on-error: true
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           path: logs
@@ -556,7 +556,7 @@ jobs:
 
       - name: Comment on QEMU Validation Success
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
@@ -635,7 +635,7 @@ jobs:
 
       - name: Comment on PR Skipped
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
@@ -700,7 +700,7 @@ jobs:
 
       - name: Set Final Commit Status
         if: always()
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
