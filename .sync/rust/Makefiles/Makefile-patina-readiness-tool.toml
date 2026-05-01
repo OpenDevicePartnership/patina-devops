@@ -16,9 +16,8 @@ X86_64_STD_LINUX_TARGET = "--target x86_64-unknown-linux-gnu"
 AARCH64_UEFI_TARGET = "--target aarch64-unknown-uefi"
 X86_64_UEFI_TARGET = "--target x86_64-unknown-uefi"
 
-NO_STD_FLAGS = "-Zbuild-std=core,compiler_builtins,alloc -Zbuild-std-features=compiler-builtins-mem -Zunstable-options"
 DXE_READINESS_PKG = "-p dxe_readiness_capture"
-CAPTURE_BIN_FLAGS = "${NO_STD_FLAGS} ${DXE_READINESS_PKG}"
+CAPTURE_BIN_FLAGS = "${DXE_READINESS_PKG}"
 CAPTURE_UEFI_SHELL_FLAGS = "${DXE_READINESS_PKG} --features uefishell --bin uefishell_dxe_readiness_capture"
 
 # DXE Readiness Capture UEFI binaries to run from UEFI Shell.
