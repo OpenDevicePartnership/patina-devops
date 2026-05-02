@@ -90,6 +90,7 @@ def run_cargo_geiger(workspace_root: Path, target: str) -> List[Dict]:
 
         geiger_cmd = [
             "cargo", "geiger",
+            "-q",
             "--output-format", "Json",
             "--all-features",
             "--target", target
