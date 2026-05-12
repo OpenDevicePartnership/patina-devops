@@ -585,7 +585,7 @@ jobs:
 
   validate-qemu-windows:
     name: Validate QEMU Q35 (Windows)
-    runs-on: windows-latest
+    runs-on: windows-2022
     needs: [vars, preflight]
     if: needs.preflight.outputs.assets_complete == 'true'
 
