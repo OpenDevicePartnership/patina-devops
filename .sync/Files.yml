@@ -100,6 +100,7 @@ group:
           - '/Conf/'
           - '/target'
           - 'BuildConfig.conf'
+          - 'docs/book/'
           - 'tags/'
           - '*secure_mm.log'
           - '*secure.log'
@@ -661,6 +662,7 @@ group:
       dest: .github/workflows/publish-mdbook.yml
     repos: |
       OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-qemu
 
 # Workflow - Publish Release
   - files:
