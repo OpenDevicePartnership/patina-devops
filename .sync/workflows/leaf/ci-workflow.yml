@@ -58,8 +58,5 @@ jobs:
 {{"  "}}mdbook_docs_test:
     name: Run
     uses: OpenDevicePartnership/patina-devops/.github/workflows/MdbookWorkflow.yml@{{ sync_version.patina_devops }}
-    with:
-      mdbook-path: "docs"
-      build-cmd: cargo make build-lib
     secrets: inherit
   {% endif %}
