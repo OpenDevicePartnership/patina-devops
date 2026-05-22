@@ -301,6 +301,48 @@ clear = true
 command = "cargo"
 args = ["test", "--doc"]
 
+[tasks.build-mdbook-deps]
+description = """Builds workspace libraries with the `mdbook` profile.
+This is a prerequisite for `cargo make test-mdbook`."""
+clear = true
+env = { RUSTC_PROFILE = "mdbook" }
+command = "cargo"
+args = ["build", "--all-features", "@@split(INDIVIDUAL_PACKAGE_TARGETS, )", "@@split(STD_FLAGS, )"]
+dependencies = ["individual-package-targets"]
+
+[tasks.test-mdbook]
+description = """Builds the mdbook and runs all of its embedded doctests with
+`mdbook test`. Uses the workspace toolchain (from `rust-toolchain.toml`) so the
+doctests link against rlibs built by the same compiler, and points `mdbook test`
+to the mdbook profile `target/mdbook/deps/` directory produced by `build-mdbook-deps`.
+"""
+clear = true
+script_runner = "@duckscript"
+script = '''
+toolchain_file = readfile rust-toolchain.toml
+channel = set "stable"
+lines = split ${toolchain_file} "\n"
+for line in ${lines}
+    trimmed = trim ${line}
+    starts = starts_with ${trimmed} "channel"
+    if ${starts}
+        parts = split ${trimmed} "\""
+        channel = array_get ${parts} 1
+    end
+end
+exec --fail-on-error mdbook build docs
+exec --fail-on-error rustup run ${channel} mdbook test docs -L target/mdbook/deps
+'''
+dependencies = ["build-mdbook-deps"]
+
+[tasks.serve-mdbook]
+description = """Serves the mdbook at http://localhost:3000 with live reload.
+`mdbook serve` rebuilds on source changes. It does not run the embedded doctests
+(use `cargo make test-mdbook` for that)."""
+clear = true
+command = "mdbook"
+args = ["serve", "docs", "--open"]
+
 [tasks.cspell]
 description = "Run cspell for spell checking." # npm install -g cspell@latest
 script = "cspell --quiet  --no-progress --no-summary  --dot --gitignore -e \"{.git/**,.github/**,.vscode/**}\" ."
@@ -342,4 +384,5 @@ dependencies = [
     "coverage",
     "doc-test",
     "doc",
+    "test-mdbook",
 ]
