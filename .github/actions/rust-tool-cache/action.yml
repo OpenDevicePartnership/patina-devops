@@ -64,8 +64,16 @@ runs:
           exit 1
         fi
 
-        # Extract tools section from rust-toolchain.toml
-        sed -n '/\[tools\]/,/^$/p' "$FILE" | grep -v '\[tools\]' | while read -r line; do
+        # Extract tools section from rust-toolchain.toml. Read from the [tools] header
+        # until (but not including) the next TOML section header.
+        sed -n '/^\[tools\]/,/^\[/{ /^\[/d; p; }' "$FILE" | while read -r line; do
+          # Skip blank lines and comments
+          [ -z "${line//[[:space:]]/}" ] && continue
+          case "$line" in \#*) continue ;; esac
+
+          # Only process lines that look like key = value
+          case "$line" in *=*) ;; *) continue ;; esac
+
           # Extract tool name and clean it
           TOOL_NAME=${line%%=*}
           TOOL_NAME=${TOOL_NAME//[[:space:]]/}
