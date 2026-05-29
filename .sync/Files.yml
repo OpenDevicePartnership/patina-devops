@@ -613,6 +613,16 @@ group:
       OpenDevicePartnership/patina-readiness-tool
 
 ###############################################################################
+# Workflows - MSRV Check
+###############################################################################
+
+  - files:
+    - source: .sync/workflows/leaf/msrv-check.yml
+      dest: .github/workflows/msrv-check.yml
+    repos: |
+      OpenDevicePartnership/patina
+
+###############################################################################
 # Workflows - Pull Request Formatting Validation
 ###############################################################################
 
