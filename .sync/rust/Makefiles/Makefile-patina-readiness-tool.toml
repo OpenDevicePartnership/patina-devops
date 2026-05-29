@@ -212,14 +212,36 @@ run_task = [{ name = ["clippy-x64", "clippy-aarch64", "clippy-std"], parallel = 
 [tasks.clippy-x64]
 description = "Run cargo clippy for x86_64-unknown-uefi."
 private = true
+run_task = [{ name = ["clippy-x64-core", "clippy-x64-uefishell"] }]
+
+[tasks.clippy-x64-core]
+description = "Run cargo clippy for x86_64-unknown-uefi core binaries."
+private = true
 command = "cargo"
-args = ["clippy", "--target", "x86_64-unknown-uefi", "--features", "ci_features", "@@split(NO_STD_FLAGS, )", "--", "-D", "warnings"]
+args = ["clippy", "@@split(DXE_READINESS_PKG, )", "--target", "x86_64-unknown-uefi", "--lib", "--bin", "intel_dxe_readiness_capture", "--bin", "qemu_dxe_readiness_capture", "@@split(NO_STD_FLAGS, )", "--", "-D", "warnings"]
+
+[tasks.clippy-x64-uefishell]
+description = "Run cargo clippy for x86_64-unknown-uefi uefishell binary."
+private = true
+command = "cargo"
+args = ["clippy", "@@split(DXE_READINESS_PKG, )", "--target", "x86_64-unknown-uefi", "--features", "uefishell", "--bin", "uefishell_dxe_readiness_capture", "@@split(NO_STD_FLAGS, )", "--", "-D", "warnings"]
 
 [tasks.clippy-aarch64]
 description = "Run cargo clippy for aarch64-unknown-uefi."
 private = true
+run_task = [{ name = ["clippy-aarch64-core", "clippy-aarch64-uefishell"] }]
+
+[tasks.clippy-aarch64-core]
+description = "Run cargo clippy for aarch64-unknown-uefi core binaries."
+private = true
 command = "cargo"
-args = ["clippy", "--target", "aarch64-unknown-uefi", "--features", "ci_features", "@@split(NO_STD_FLAGS, )", "--", "-D", "warnings"]
+args = ["clippy", "@@split(DXE_READINESS_PKG, )", "--target", "aarch64-unknown-uefi", "--lib", "--bin", "qemu_dxe_readiness_capture", "@@split(NO_STD_FLAGS, )", "--", "-D", "warnings"]
+
+[tasks.clippy-aarch64-uefishell]
+description = "Run cargo clippy for aarch64-unknown-uefi uefishell binary."
+private = true
+command = "cargo"
+args = ["clippy", "@@split(DXE_READINESS_PKG, )", "--target", "aarch64-unknown-uefi", "--features", "uefishell", "--bin", "uefishell_dxe_readiness_capture", "@@split(NO_STD_FLAGS, )", "--", "-D", "warnings"]
 
 [tasks.clippy-std]
 description = "Run cargo clippy for the host target (library and tests only)."
