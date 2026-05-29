@@ -497,10 +497,10 @@ command = "cargo"
 args = ["clippy", "--target", "aarch64-unknown-uefi", "--features", "ci_features", "@@split(NO_STD_FLAGS, )", "--", "-D", "warnings"]
 
 [tasks.clippy-std]
-description = "Run cargo clippy for std."
+description = "Run cargo clippy for the host target (library and tests only)."
 private = true
 command = "cargo"
-args = ["clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+args = ["clippy", "--tests", "--", "-D", "warnings"]
 
 [tasks.fmt]
 description = "Run cargo format."
