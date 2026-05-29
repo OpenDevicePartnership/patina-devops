@@ -1,0 +1,226 @@
+# @file MsrvCheck.yml
+#
+# Verifies the workspace builds and tests on the Minimum Supported Rust Version (MSRV)
+# toolchain declared in `rust-toolchain.toml` under a custom `[msrv]` table, for example:
+#
+#   [msrv]
+#   channel = "nightly-2025-06-26"   # branched-from date for rust-version = "1.89"
+#
+# If a problem is found on a scheduled run, a rolling issue is opened or updated to track the
+# failure until it is resolved. PR-triggered failures just rely on the PR status check failing.
+#
+##
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+##
+
+name: MSRV Check
+
+on:
+  workflow_call:
+    inputs:
+      runs-on:
+        description: 'Runner label to use.'
+        type: string
+        required: false
+        default: ubuntu-latest
+      build-tasks:
+        description: "Comma-separated list of cargo-make build tasks to run (e.g., 'build-x64,build-aarch64'). Empty to skip."
+        type: string
+        required: false
+        default: ''
+      timeout-minutes:
+        description: 'Per-job timeout in minutes.'
+        type: number
+        required: false
+        default: 45
+      issue-on-schedule-failure:
+        description: 'When true, open/refresh a rolling issue on failures triggered by the schedule event.'
+        type: boolean
+        required: false
+        default: true
+
+jobs:
+  msrv:
+    name: MSRV Check
+    runs-on: ${{ inputs.runs-on }}
+    timeout-minutes: ${{ inputs.timeout-minutes }}
+
+    steps:
+      - name: Generate Token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.PATINA_AUTOMATION_APPLICATION_ID }}
+          private-key: ${{ secrets.PATINA_AUTOMATION_APPLICATION_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: ✅ Checkout Repository ✅
+        uses: actions/checkout@v6
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      # Parse [msrv].channel from rust-toolchain.toml and rust-version from
+      # the workspace Cargo.toml.
+      - name: Resolve MSRV channel
+        id: msrv
+        shell: python
+        run: |
+          import os, pathlib, sys, tomllib
+
+          data = tomllib.loads(pathlib.Path("rust-toolchain.toml").read_text())
+          channel = (data.get("msrv") or {}).get("channel")
+          if not channel:
+              sys.stderr.write("ERROR: [msrv].channel not set in rust-toolchain.toml\n")
+              sys.exit(1)
+
+          cargo = tomllib.loads(pathlib.Path("Cargo.toml").read_text())
+          rust_version = cargo.get("workspace", {}).get("package", {}).get("rust-version", "")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"channel={channel}\n")
+              fh.write(f"rust_version={rust_version}\n")
+
+          print(f"Resolved MSRV channel: {channel} (rust-version={rust_version})")
+
+      # Rewrite [toolchain].channel in place so that all downstream tooling
+      # (rust-tool-cache, rustup, cargo, cargo-make) uses the MSRV toolchain.
+      - name: Apply MSRV channel to rust-toolchain.toml
+        shell: python
+        env:
+          MSRV_CHANNEL: ${{ steps.msrv.outputs.channel }}
+        run: |
+          import os, pathlib, re, sys
+
+          channel = os.environ["MSRV_CHANNEL"]
+          p = pathlib.Path("rust-toolchain.toml")
+          text = p.read_text()
+          new_text, n = re.subn(
+              r'(?ms)(^\[toolchain\][^\[]*?^\s*channel\s*=\s*")[^"]*(")',
+              lambda m: m.group(1) + channel + m.group(2),
+              text,
+              count=1,
+          )
+          if n != 1:
+              sys.stderr.write("ERROR: failed to rewrite [toolchain].channel in rust-toolchain.toml\n")
+              sys.exit(1)
+          p.write_text(new_text)
+
+          print("-- rust-toolchain.toml (after MSRV swap) --")
+          print(new_text)
+
+      # Note: Cache key is MSRV-specific (separate from active toolchain).
+      - name: 🛠️ Download Rust Tools 🛠️
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+
+      # The MSRV check just runs a small number of key verification tasks.
+      - name: Run cargo make check
+        run: cargo make check
+
+      - name: Run cargo make test
+        run: cargo make test
+
+      # Same build-tasks fan-out pattern as CiWorkflow.yml.
+      - name: Run build tasks
+        if: ${{ inputs.build-tasks != '' }}
+        shell: bash
+        run: |
+          IFS=',' read -ra TASKS <<< "${{ inputs.build-tasks }}"
+          for task in "${TASKS[@]}"; do
+            task=$(echo "$task" | xargs)
+            echo "Running cargo make $task"
+            cargo make "$task"
+          done
+
+      # Scheduled-failure surface: open or refresh a single rolling issue for
+      # problems on nightly runs.
+      - name: Open or update the rolling MSRV failure issue
+        if: failure() && github.event_name == 'schedule' && inputs.issue-on-schedule-failure
+        uses: actions/github-script@v9
+        env:
+          MSRV_CHANNEL: ${{ steps.msrv.outputs.channel }}
+          MSRV_RUST_VERSION: ${{ steps.msrv.outputs.rust_version }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const title = 'MSRV Check Failure';
+            const { owner, repo } = context.repo;
+            const body = [
+              `The scheduled MSRV check workflow failed.`,
+              ``,
+              `- **MSRV channel:** \`${process.env.MSRV_CHANNEL}\``,
+              `- **Declared \`rust-version\`:** \`${process.env.MSRV_RUST_VERSION}\``,
+              `- **Failing run:** ${process.env.RUN_URL}`,
+              `- **Commit:** ${context.sha}`,
+              ``,
+              `One or more of \`cargo make check\`, \`cargo make test\`, or the configured build tasks no longer succeeds on the MSRV toolchain declared in \`rust-toolchain.toml\` under \`[msrv]\`.`,
+              ``,
+              `Typical causes:`,
+              `1. New source code uses a Rust language or \`core\`/\`alloc\` API only available on a newer toolchain than the MSRV channel.`,
+              `2. A dependency upgrade raised its own MSRV above ours.`,
+              `3. A new \`#![feature(...)]\` was added that is not available on the MSRV channel.`,
+              ``,
+              `Resolution options (in order of preference):`,
+              `1. Refactor to avoid the newer API/feature.`,
+              `2. Pin the problematic dependency to a version compatible with our MSRV.`,
+              `3. Raise the MSRV: update \`rust-version\` in the root \`Cargo.toml\` and bump \`[msrv].channel\` in \`rust-toolchain.toml\` per \`docs/src/dev/rust_version_update_process.md\`.`,
+              ``,
+              `This issue is updated on subsequent failures and auto-closed when a scheduled run passes again.`,
+            ].join('\n');
+
+            const apiVersion = { headers: { 'x-github-api-version': '2022-11-28' } };
+
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', labels: 'msrv', per_page: 100,
+              request: apiVersion,
+            });
+            const match = existing.find(i => i.title === title);
+
+            if (match) {
+              await github.rest.issues.update({
+                owner, repo, issue_number: match.number, body,
+                request: apiVersion,
+              });
+              await github.rest.issues.createComment({
+                owner, repo, issue_number: match.number,
+                body: `MSRV check failed again on ${context.sha}. See ${process.env.RUN_URL}.`,
+                request: apiVersion,
+              });
+              core.info(`Refreshed existing issue #${match.number}.`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner, repo, title, body, labels: ['msrv', 'ci'],
+                request: apiVersion,
+              });
+              core.info(`Opened new issue #${created.data.number}.`);
+            }
+
+      # When a scheduled run passes again, close any open rolling issue.
+      - name: Close MSRV failure issue on success
+        if: success() && github.event_name == 'schedule' && inputs.issue-on-schedule-failure
+        uses: actions/github-script@v9
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const title = 'MSRV Check Failure';
+            const { owner, repo } = context.repo;
+            const apiVersion = { headers: { 'x-github-api-version': '2022-11-28' } };
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: 'open', labels: 'msrv', per_page: 100,
+              request: apiVersion,
+            });
+            for (const issue of issues) {
+              if (issue.title === title) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issue.number,
+                  body: `MSRV check passed on ${context.sha}. Closing.`,
+                  request: apiVersion,
+                });
+                await github.rest.issues.update({
+                  owner, repo, issue_number: issue.number, state: 'closed',
+                  request: apiVersion,
+                });
+                core.info(`Closed stale issue #${issue.number}.`);
+              }
+            }
