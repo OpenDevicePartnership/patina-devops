@@ -301,6 +301,19 @@ clear = true
 command = "cargo"
 args = ["test", "--doc"]
 
+[tasks.clean-mdbook-deps]
+description = """Removes the `target/mdbook/` directory to clean up old rlibs."""
+clear = true
+script_runner = "@duckscript"
+script = '''
+mdbook_target = set "target/mdbook"
+exists = is_path_exists ${mdbook_target}
+if ${exists}
+    echo Removing stale ${mdbook_target} directory...
+    rm -r ${mdbook_target}
+end
+'''
+
 [tasks.build-mdbook-deps]
 description = """Builds workspace libraries with the `mdbook` profile.
 This is a prerequisite for `cargo make test-mdbook`."""
@@ -308,7 +321,7 @@ clear = true
 env = { RUSTC_PROFILE = "mdbook" }
 command = "cargo"
 args = ["build", "--all-features", "@@split(INDIVIDUAL_PACKAGE_TARGETS, )", "@@split(STD_FLAGS, )"]
-dependencies = ["individual-package-targets"]
+dependencies = ["clean-mdbook-deps", "individual-package-targets"]
 
 [tasks.test-mdbook]
 description = """Builds the mdbook and runs all of its embedded doctests with
