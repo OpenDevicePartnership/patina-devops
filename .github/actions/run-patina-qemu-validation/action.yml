@@ -28,7 +28,7 @@ inputs:
     description: Absolute path to the patina-qemu repository containing build_and_run_rust_binary.py.
     required: true
   platform:
-    description: QEMU platform name (e.g. Q35 or SBSA).
+    description: QEMU platform name (e.g. Q35 or ArmVirt).
     required: true
   pre-compiled-rom:
     description: Absolute path to the pre-compiled firmware ROM file.

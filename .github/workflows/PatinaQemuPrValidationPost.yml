@@ -352,7 +352,7 @@ jobs:
               if (!osMatch) return '';
               const os = osMatch[1]; // "Linux" or "Windows"
 
-              // Try to extract the platform from the job name (e.g. "Q35", "SBSA")
+              // Try to extract the platform from the job name (e.g. "Q35", "ArmVirt")
               const platMatch = jobName.match(/Validate QEMU\s*[-–—]?\s*(\w+)\s*\(/);
               const platform = platMatch ? platMatch[1] : null;
 

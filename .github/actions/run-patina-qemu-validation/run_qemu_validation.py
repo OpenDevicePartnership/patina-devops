@@ -26,7 +26,7 @@ JSON keys:
   patina_qemu_repo    (string, required)  Path to the patina-qemu repository
                       containing build_and_run_rust_binary.py.
   platform            (string, required)  QEMU platform name (e.g. "Q35" or
-                      "SBSA").
+                      "ArmVirt").
   pre_compiled_rom    (string, required)  Path to the pre-compiled firmware ROM
                       file.
   qemu_path           (string, optional)  Path to the QEMU executable. Only

@@ -124,5 +124,5 @@ runs:
           run_cmd cargo make q35 -- --exclude-features exit_on_patina_test_failure
         fi
         run_cmd cargo make q35-release -- --exclude-features exit_on_patina_test_failure
-        run_cmd cargo make sbsa -- --exclude-features exit_on_patina_test_failure
-        run_cmd cargo make sbsa-release -- --exclude-features exit_on_patina_test_failure
+        run_cmd cargo make armvirt -- --exclude-features exit_on_patina_test_failure
+        run_cmd cargo make armvirt-release -- --exclude-features exit_on_patina_test_failure
