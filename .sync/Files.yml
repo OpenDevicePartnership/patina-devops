@@ -492,9 +492,9 @@ group:
       template:
         build_tasks:
           - "q35"
-          - "sbsa"
+          - "armvirt"
           - "q35-release"
-          - "sbsa-release"
+          - "armvirt-release"
           - "ovmf"
           - "ovmf-release"
         run_cargo_vet: false
