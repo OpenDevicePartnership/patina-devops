@@ -184,8 +184,6 @@ group:
     repos: |
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-dxe-core-qemu
-      OpenDevicePartnership/patina-mtrr
-      OpenDevicePartnership/patina-paging
 
   - files:
     - source: .sync/rust/deny.toml
