@@ -46,7 +46,7 @@ jobs:
       - name: Markdown Linting
         uses: avto-dev/markdown-lint@v1.5.0
         with:
-          config: .markdownlint.yml
+          config: .markdownlint.yaml
           args: "**/*.md"
 
       # Run the tests that require the rust tools, but not a specific OS.
