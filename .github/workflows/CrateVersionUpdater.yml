@@ -64,7 +64,7 @@ jobs:
 
       - name: ✅ Checkout Repository ✅
         if: steps.check_pr.outputs.skip == 'false'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🛠️ Download Rust Tools 🛠️
         if: steps.check_pr.outputs.skip == 'false'

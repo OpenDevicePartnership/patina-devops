@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: ✅ Checkout Repository ✅
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🔤 Check Spelling 🔤
         uses: streetsidesoftware/cspell-action@v8
@@ -80,7 +80,7 @@ jobs:
 
     steps:
       - name: ✅ Checkout Repository ✅
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: 🛠️ Download Rust Tools 🛠️
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
@@ -96,7 +96,7 @@ jobs:
 
       - name: Upload Coverage Report
         if: github.repository_owner == 'OpenDevicePartnership'
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: target/lcov.info
