@@ -165,7 +165,7 @@ jobs:
           fi
 
       - name: Checkout Repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
           ref: ${{ inputs.patina-ref || inputs.dxe-core-qemu-ref }}
@@ -489,7 +489,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
           ref: ${{ inputs.patina-ref || inputs.dxe-core-qemu-ref }}
@@ -601,7 +601,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
         with:
           repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
           ref: ${{ inputs.patina-ref || inputs.dxe-core-qemu-ref }}
