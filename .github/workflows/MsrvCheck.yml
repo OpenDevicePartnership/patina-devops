@@ -49,6 +49,7 @@ jobs:
     steps:
       - name: Generate Token
         id: app-token
+        if: ${{ github.event_name != 'pull_request' }}
         uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.PATINA_AUTOMATION_APPLICATION_ID }}
@@ -58,7 +59,8 @@ jobs:
       - name: ✅ Checkout Repository ✅
         uses: actions/checkout@v7
         with:
-          token: ${{ steps.app-token.outputs.token }}
+          # Falls back to the default GITHUB_TOKEN when the app token step was skipped (PR runs).
+          token: ${{ steps.app-token.outputs.token || github.token }}
 
       # Parse [msrv].channel from rust-toolchain.toml and rust-version from
       # the workspace Cargo.toml.
