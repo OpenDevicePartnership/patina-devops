@@ -434,6 +434,7 @@ doctests link against rlibs built by the same compiler, and points `mdbook test`
 to the mdbook profile `target/mdbook/deps/` directory produced by `build-mdbook-deps`.
 """
 clear = true
+env = { RUSTC_BOOTSTRAP = "1" }
 script_runner = "@duckscript"
 script = '''
 toolchain_file = readfile rust-toolchain.toml
