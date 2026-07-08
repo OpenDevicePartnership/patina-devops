@@ -233,6 +233,7 @@ group:
       dest: Makefile.toml
     repos: |
       OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-components
 
 # Rust Configuration - Rust Toolchain
   - files:
