@@ -670,6 +670,7 @@ group:
       dest: .github/workflows/publish-mdbook.yml
     repos: |
       OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-components
       OpenDevicePartnership/patina-qemu
 
 # Workflow - Publish Release
