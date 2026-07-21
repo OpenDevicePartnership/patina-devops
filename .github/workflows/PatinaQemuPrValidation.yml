@@ -167,6 +167,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
+          allow-unsafe-pr-checkout: true # Temporary. Tracked in https://github.com/OpenDevicePartnership/patina-devops/issues/166.
           repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
           ref: ${{ inputs.patina-ref || inputs.dxe-core-qemu-ref }}
 
@@ -491,6 +492,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
+          allow-unsafe-pr-checkout: true # Temporary. Tracked in https://github.com/OpenDevicePartnership/patina-devops/issues/166.
           repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
           ref: ${{ inputs.patina-ref || inputs.dxe-core-qemu-ref }}
 
@@ -603,6 +605,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
+          allow-unsafe-pr-checkout: true # Temporary. Tracked in https://github.com/OpenDevicePartnership/patina-devops/issues/166.
           repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
           ref: ${{ inputs.patina-ref || inputs.dxe-core-qemu-ref }}
 
