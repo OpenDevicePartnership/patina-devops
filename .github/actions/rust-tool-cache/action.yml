@@ -92,7 +92,7 @@ runs:
           echo ""
 
           # Attempt to binstall the tool first. If it fails, install it using cargo
-          cargo binstall -y $TOOL_NAME --version $TOOL_VERSION || cargo install $TOOL_NAME --version $TOOL_VERSION
+          cargo binstall -y $TOOL_NAME --version $TOOL_VERSION || cargo install $TOOL_NAME --version $TOOL_VERSION --locked
         done
       if: steps.tool-cache.outputs.cache-hit != 'true'
 
