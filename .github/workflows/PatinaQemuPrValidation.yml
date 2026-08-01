@@ -165,7 +165,7 @@ jobs:
           fi
 
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           allow-unsafe-pr-checkout: true # Temporary. Tracked in https://github.com/OpenDevicePartnership/patina-devops/issues/166.
           repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
@@ -490,7 +490,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           allow-unsafe-pr-checkout: true # Temporary. Tracked in https://github.com/OpenDevicePartnership/patina-devops/issues/166.
           repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
@@ -603,7 +603,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           allow-unsafe-pr-checkout: true # Temporary. Tracked in https://github.com/OpenDevicePartnership/patina-devops/issues/166.
           repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
@@ -617,7 +617,7 @@ jobs:
           New-Item -ItemType Directory -Path "$env:LOG_DIR" -Force | Out-Null
 
       - name: Setup Python (Windows)
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ needs.vars.outputs['python-version'] }}
 
