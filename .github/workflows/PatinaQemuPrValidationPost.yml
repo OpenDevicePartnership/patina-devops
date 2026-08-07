@@ -664,6 +664,12 @@ jobs:
             if (skipReason === 'merged') {
               title = ':information_source: QEMU Validation Skipped - PR Merged';
               message = 'The Patina QEMU PR validation workflow did not run because the PR was merged before validation started.';
+            } else if (skipReason === 'closed') {
+              title = ':information_source: QEMU Validation Skipped - PR Closed';
+              message = 'The Patina QEMU PR validation workflow did not run because the PR was closed before validation started.';
+            } else if (skipReason === 'unsupported_target_branch') {
+              title = ':information_source: QEMU Validation Skipped - Unsupported Target Branch';
+              message = 'The Patina QEMU PR validation workflow did not run because the PR targets an unsupported branch.';
             } else {
               title = ':information_source: QEMU Validation Skipped - PR Branch Unavailable';
               message = 'The Patina QEMU PR validation workflow did not run because the PR branch is no longer accessible.';
