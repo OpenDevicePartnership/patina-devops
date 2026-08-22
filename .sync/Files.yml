@@ -503,7 +503,24 @@ group:
     repos: |
       OpenDevicePartnership/patina-dxe-core-qemu
 
-# CI Workflow: patina-mtrr & patina-paging
+# CI Workflow: patina-mtrr
+  - files:
+    - source: .sync/workflows/leaf/ci-workflow.yml
+      dest: .github/workflows/ci-workflow.yml
+      template:
+        build_tasks:
+          - "build"
+          - "build-x64"
+        run_cargo_vet: false
+        runner_images:
+          - "ubuntu-latest"
+          - "windows-latest"
+        trigger_branches:
+          - "main"
+    repos: |
+      OpenDevicePartnership/patina-mtrr
+
+# CI Workflow: patina-paging
   - files:
     - source: .sync/workflows/leaf/ci-workflow.yml
       dest: .github/workflows/ci-workflow.yml
@@ -516,7 +533,6 @@ group:
         trigger_branches:
           - "main"
     repos: |
-      OpenDevicePartnership/patina-mtrr
       OpenDevicePartnership/patina-paging
 
 # CI Workflow: patina-components
