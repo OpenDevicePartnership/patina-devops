@@ -53,6 +53,9 @@ jobs:
     with:
       build-tasks: {{ build_tasks | join(",") }}
       run-cargo-vet: {{ run_cargo_vet }}
+{% if runner_images %}
+      runner-images: '{{ runner_images | dump | safe }}'
+{% endif %}
     secrets: inherit
   {% if test_mdbook -%}
 {{"  "}}mdbook_docs_test:
