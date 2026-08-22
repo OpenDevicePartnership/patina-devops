@@ -24,6 +24,11 @@ on:
         required: false
         default: ""
         type: string
+      runner-images:
+        description: 'JSON array string of runner images to use for the OS matrix (e.g. ["ubuntu-latest", "windows-latest"])'
+        required: false
+        default: '["ubuntu-latest", "windows-latest", "ubuntu-24.04-arm"]'
+        type: string
 
 jobs:
   basic_ci:
@@ -76,7 +81,7 @@ jobs:
 
     strategy:
       matrix:
-        os: [ ubuntu-latest, windows-latest, ubuntu-24.04-arm ]
+        os: ${{ fromJSON(inputs.runner-images) }}
 
     steps:
       - name: ✅ Checkout Repository ✅
