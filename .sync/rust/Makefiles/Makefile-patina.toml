@@ -235,6 +235,12 @@ clear = true
 command = "cargo"
 args = ["test", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
+[tasks.test-ignored]
+description = "Runs ignored tests with native cargo test behavior. Example `cargo make test-ignored` or `cargo make test-ignored -p package_name"
+clear = true
+command = "cargo"
+args = ["test", "@@split(CARGO_MAKE_TASK_ARGS,;)", "--lib", "--tests", "--examples", "--", "--ignored"]
+
 [tasks.test-cov]
 description = "Run tests and collect coverage data without generating reports."
 install_crate = false
@@ -487,5 +493,6 @@ dependencies = [
     "coverage",
     "doc-test",
     "doc",
+    "test-ignored",
     "test-mdbook",
 ]
