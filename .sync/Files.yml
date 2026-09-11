@@ -197,6 +197,19 @@ group:
       OpenDevicePartnership/patina
       OpenDevicePartnership/patina-components
 
+# Rust Configuration - Cargo Nextest
+  - files:
+    - source: .sync/rust/nextest.toml
+      dest: .config/nextest.toml
+    repos: |
+      OpenDevicePartnership/patina
+      OpenDevicePartnership/patina-apps
+      OpenDevicePartnership/patina-components
+      OpenDevicePartnership/patina-dxe-core-qemu
+      OpenDevicePartnership/patina-mtrr
+      OpenDevicePartnership/patina-paging
+      OpenDevicePartnership/patina-readiness-tool
+
 # Rust Configuration - Rust Toolchain
   - files:
     - source: .sync/rust/rust-toolchain.toml
