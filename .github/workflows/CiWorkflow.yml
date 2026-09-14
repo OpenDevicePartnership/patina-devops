@@ -41,10 +41,10 @@ jobs:
 
     steps:
       - name: ✅ Checkout Repository ✅
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: 🔤 Check Spelling 🔤
-        uses: streetsidesoftware/cspell-action@v8
+        uses: streetsidesoftware/cspell-action@de2a73e963e7443969755b648a1008f77033c5b2 # v8.4.0
         with:
           treat_flagged_words_as_errors: true
           strict: true
@@ -52,7 +52,7 @@ jobs:
           incremental_files_only: false
 
       - name: Markdown Linting
-        uses: avto-dev/markdown-lint@v1.5.0
+        uses: avto-dev/markdown-lint@04d43ee9191307b50935a753da3b775ab695eceb # v1.5.0
         with:
           config: .markdownlint.yaml
           args: "**/*.md"
@@ -88,7 +88,7 @@ jobs:
 
     steps:
       - name: ✅ Checkout Repository ✅
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: 🛠️ Download Rust Tools 🛠️
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
@@ -104,7 +104,7 @@ jobs:
 
       - name: Upload Coverage Report
         if: github.repository_owner == 'OpenDevicePartnership'
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: target/lcov.info
@@ -122,7 +122,7 @@ jobs:
         shell: bash
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ runner.os }}-${{ runner.arch }}-ci-artifacts
           path: |
@@ -131,7 +131,7 @@ jobs:
 
       - name: Upload Additional Artifacts
         if: ${{ inputs.additional-artifacts != '' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ runner.os }}-${{ runner.arch }}-additional-artifacts
           path: ${{ inputs.additional-artifacts }}
