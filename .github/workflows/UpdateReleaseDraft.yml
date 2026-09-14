@@ -31,7 +31,7 @@ jobs:
 
     steps:
       - name: Build a Release Draft
-        uses: release-drafter/release-drafter@v7
+        uses: release-drafter/release-drafter@34d80673e067bdc0c24568d3af899c216adcfaa9 # v7.7.0
         with:
           config-name: release-draft-config.yml
         env:
