@@ -490,7 +490,8 @@ ignore_errors = false
 
 [tasks.all]
 description = "Run all tasks for PR readiness."
-dependencies = [
+env = { CARGO_INCREMENTAL = "0" }
+run_task = { name = [
     "fmt-check",
     "deny",
     "cspell",
@@ -505,4 +506,4 @@ dependencies = [
     "doc",
     "test-ignored",
     "test-mdbook",
-]
+] }

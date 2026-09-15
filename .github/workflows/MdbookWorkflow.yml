@@ -9,6 +9,9 @@
 # SPDX-License-Identifier: Apache-2.0
 ##
 
+env:
+  CARGO_INCREMENTAL: "0"
+
 on:
   workflow_call:
 
