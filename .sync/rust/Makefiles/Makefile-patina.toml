@@ -491,19 +491,19 @@ ignore_errors = false
 [tasks.all]
 description = "Run all tasks for PR readiness."
 env = { CARGO_INCREMENTAL = "0" }
-run_task = { name = [
-    "fmt-check",
-    "deny",
-    "cspell",
-    "clippy",
-    "check-no-default-features",
-    "build",
-    "build-x64",
-    "build-aarch64",
-    "patina-test",
-    "coverage",
-    "doc-test",
-    "doc",
-    "test-ignored",
-    "test-mdbook",
-] }
+run_task = [
+    { name = ["fmt-check", "deny", "cspell"], parallel = true },
+    { name = [
+        "clippy",
+        "check-no-default-features",
+        "build",
+        "build-x64",
+        "build-aarch64",
+        "patina-test",
+        "coverage",
+        "doc-test",
+        "doc",
+        "test-ignored",
+        "test-mdbook",
+    ] },
+]
