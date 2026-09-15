@@ -32,7 +32,7 @@ on:
 jobs:
   crate-version-update-pr:
     name: Run
-    uses: OpenDevicePartnership/patina-devops/.github/workflows/CrateVersionUpdater.yml@{% endraw %}{{ sync_version.patina_devops }}
+    uses: OpenDevicePartnership/patina-devops/.github/workflows/CrateVersionUpdater.yml@{% endraw %}{{ sync_version.patina_devops_sha }} # {{ sync_version.patina_devops }}
     with:
       ignore-prefix: {{ ignore_prefix }}
       {% raw %}

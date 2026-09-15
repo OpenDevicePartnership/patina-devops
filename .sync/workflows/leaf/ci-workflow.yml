@@ -49,7 +49,7 @@ concurrency:
 jobs:
   ci_workflow:
     name: Run
-    uses: OpenDevicePartnership/patina-devops/.github/workflows/CiWorkflow.yml@{{ sync_version.patina_devops }}
+    uses: OpenDevicePartnership/patina-devops/.github/workflows/CiWorkflow.yml@{{ sync_version.patina_devops_sha }} # {{ sync_version.patina_devops }}
     with:
       build-tasks: {{ build_tasks | join(",") }}
       run-cargo-vet: {{ run_cargo_vet }}
@@ -60,6 +60,6 @@ jobs:
   {% if test_mdbook -%}
 {{"  "}}mdbook_docs_test:
     name: Run
-    uses: OpenDevicePartnership/patina-devops/.github/workflows/MdbookWorkflow.yml@{{ sync_version.patina_devops }}
+    uses: OpenDevicePartnership/patina-devops/.github/workflows/MdbookWorkflow.yml@{{ sync_version.patina_devops_sha }} # {{ sync_version.patina_devops }}
     secrets: inherit
   {% endif %}
