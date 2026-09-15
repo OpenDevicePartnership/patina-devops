@@ -27,7 +27,7 @@ on:
 jobs:
   release:
     name: Release
-    uses: OpenDevicePartnership/patina-devops/.github/workflows/ReleaseWorkflow.yml@{% endraw %}{{ sync_version.patina_devops }}
+    uses: OpenDevicePartnership/patina-devops/.github/workflows/ReleaseWorkflow.yml@{% endraw %}{{ sync_version.patina_devops_sha }} # {{ sync_version.patina_devops }}
     with:
       ignore-prefix: 'patina-v'
     secrets: inherit

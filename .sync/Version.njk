@@ -8,18 +8,22 @@
   files are synced.
 
   =====================================================================================================================
-  `patina_devops` Example:
+  `patina_devops` / `patina_devops_sha` Example:
   =====================================================================================================================
   `patina_devops` defines the git tag value of Patina DevOps that will be synced (via file sync) to repos that depend
-  on this repo. This updates the version of Patina DevOps used across all Patina repos.
+  on this repo. `patina_devops_sha` is the full commit SHA that tag points to. Synced workflow files pin the `uses:`
+  reusable-workflow ref to `patina_devops_sha` (with `patina_devops` kept only as a trailing `# vX.Y.Z` comment), so
+  that leaf repos are not affected by a tag being moved or deleted.
 
   Example flow:
     1. Make a new Patina DevOps release (e.g. "v1.0.0")
-    2. Update this file to set `patina_devops` to "v1.0.0"
+    2. Look up the commit SHA that the "v1.0.0" tag points to (e.g. `git rev-parse v1.0.0`, or the commit shown on
+       the release/tag page in GitHub)
+    3. Update this file to set `patina_devops` to "v1.0.0" and `patina_devops_sha` to the resolved commit SHA
 
-  Step (2) causes the following automated actions to take place after the change is merged:
-    1. All sync files (e.g. a GitHub workflow file) that depend on this version get the new value substituted
-    2. All sync files with the substituted value are synced to their respective repos (PRs created with the change)
+  Step (3) causes the following automated actions to take place after the change is merged:
+    1. All sync files (e.g. a GitHub workflow file) that depend on this version get the new values substituted
+    2. All sync files with the substituted values are synced to their respective repos (PRs created with the change)
     3. After the PRs in those repos are merged, they use the new version of Patina DevOps
 
   ---------------------------------------------------------------------------------------------------------------------
@@ -29,5 +33,8 @@
   SPDX-License-Identifier: Apache-2.0
 #}
 
-{# The git ref value that files dependent on this repo will use. #}
+{# The git tag value of Patina DevOps. Kept only as a human-readable `# vX.Y.Z` comment in synced files. #}
 {% set patina_devops = "v0.3.15" %}
+
+{# The full commit SHA that the `patina_devops` tag points to. This is the value actually used to pin `uses:` refs. #}
+{% set patina_devops_sha = "9e10f2a838deafebb1d0626d6034c25cb996345c" %}

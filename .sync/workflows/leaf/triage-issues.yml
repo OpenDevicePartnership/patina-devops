@@ -27,5 +27,5 @@ jobs:
       contents: read
       issues: write
 
-    uses: OpenDevicePartnership/patina-devops/.github/workflows/IssueTriager.yml@{% endraw %}{{ sync_version.patina_devops }}
+    uses: OpenDevicePartnership/patina-devops/.github/workflows/IssueTriager.yml@{% endraw %}{{ sync_version.patina_devops_sha }} # {{ sync_version.patina_devops }}
     secrets: inherit
