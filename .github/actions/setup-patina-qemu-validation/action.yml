@@ -90,6 +90,7 @@ runs:
       shell: bash
       env:
         BUILD_LOG_FILE: ${{ inputs.log-file }}
+        CARGO_INCREMENTAL: "0"
         PATINA_REPO: ${{ inputs.patina-repo }}
       run: |
         set -euo pipefail
