@@ -258,9 +258,35 @@ clear = true
 # `coverage` cfg (set by cargo-llvm-cov), which needs the feature, so re-add it here.
 # Note: RUSTFLAGS replaces build.rustflags.
 env = { RUSTFLAGS = "-Z allow-features=c_variadic,allocator_api,coverage_attribute" }
+# cargo-llvm-cov is not currently supported on Windows ARM64 hosts.
+# See:
+#   - https://github.com/taiki-e/cargo-llvm-cov/issues/436
+#   - https://github.com/rust-lang/rust/issues/150123
+script_runner = "@duckscript"
+condition_script = ['''
+target = get_env CARGO_MAKE_RUST_TARGET_TRIPLE
+if eq ${target} "aarch64-pc-windows-msvc"
+    echo "cargo-llvm-cov is not supported on aarch64-pc-windows-msvc. Skipping test-cov."
+    exit 1
+end
+''']
 command = "cargo"
 args = ["llvm-cov", "@@split(COV_FLAGS, )", "--no-report", "nextest"]
 dependencies = ["individual-package-targets", "llvm-cov-clean"]
+
+[tasks.test-cov-fallback]
+description = "Runs tests without coverage instrumentation on hosts where test-cov is skipped (currently just aarch64-pc-windows-msvc)."
+clear = true
+script_runner = "@duckscript"
+condition_script = ['''
+target = get_env CARGO_MAKE_RUST_TARGET_TRIPLE
+if not eq ${target} "aarch64-pc-windows-msvc"
+    exit 1
+end
+''']
+command = "cargo"
+args = ["nextest", "run"]
+dependencies = ["individual-package-targets"]
 
 [tasks.test-asan]
 description = "Run tests with AddressSanitizer enabled. Example `cargo make test-asan`. Use `cargo make test-asan --print-dll-path` to print the ASan runtime DLL directory."
@@ -320,6 +346,18 @@ exec --fail-on-error cargo test --doc --target ${target} --workspace --features 
 description = "Generate an LCOV coverage report from collected data."
 install_crate = false
 clear = true
+# cargo-llvm-cov is not currently supported on Windows ARM64 hosts.
+# See:
+#   - https://github.com/taiki-e/cargo-llvm-cov/issues/436
+#   - https://github.com/rust-lang/rust/issues/150123
+script_runner = "@duckscript"
+condition_script = ['''
+target = get_env CARGO_MAKE_RUST_TARGET_TRIPLE
+if eq ${target} "aarch64-pc-windows-msvc"
+    echo "cargo-llvm-cov is not supported on aarch64-pc-windows-msvc. Skipping coverage-lcov."
+    exit 1
+end
+''']
 command = "cargo"
 args = ["llvm-cov", "report", "--lcov", "--output-path", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/lcov.info"]
 
@@ -327,12 +365,24 @@ args = ["llvm-cov", "report", "--lcov", "--output-path", "${CARGO_MAKE_WORKSPACE
 description = "Generate an HTML coverage report from collected data."
 install_crate = false
 clear = true
+# cargo-llvm-cov is not currently supported on Windows ARM64 hosts.
+# See:
+#   - https://github.com/taiki-e/cargo-llvm-cov/issues/436
+#   - https://github.com/rust-lang/rust/issues/150123
+script_runner = "@duckscript"
+condition_script = ['''
+target = get_env CARGO_MAKE_RUST_TARGET_TRIPLE
+if eq ${target} "aarch64-pc-windows-msvc"
+    echo "cargo-llvm-cov is not supported on aarch64-pc-windows-msvc. Skipping coverage-html."
+    exit 1
+end
+''']
 command = "cargo"
 args = ["llvm-cov", "report", "--html", "--output-dir", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/coverage"]
 
 [tasks.coverage]
 description = "Build and run all tests and calculate coverage (runs test once and generates LCOV and HTML reports)."
-dependencies = ["test-cov", "coverage-lcov", "coverage-html"]
+dependencies = ["test-cov", "test-cov-fallback", "coverage-lcov", "coverage-html"]
 clear = true
 
 [tasks.build-aarch64]
@@ -348,6 +398,14 @@ clear = true
 command = "cargo"
 args = ["build", "@@split(INDIVIDUAL_PACKAGE_TARGETS, )", "--target", "x86_64-unknown-uefi", "@@split(NO_STD_FLAGS, )", ]
 dependencies = ["individual-package-targets"]
+script_runner = "@duckscript"
+condition_script = ['''
+target = get_env CARGO_MAKE_RUST_TARGET_TRIPLE
+if eq ${target} "aarch64-pc-windows-msvc"
+    echo "Cross-compiling for x86_64-unknown-uefi from aarch64-pc-windows-msvc is skipped to save build time on Windows ARM64 hosts."
+    exit 1
+end
+''']
 
 [tasks.doc]
 description = "Builds all rust documentation in the workspace. Example `cargo make doc`"
