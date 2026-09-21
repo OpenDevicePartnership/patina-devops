@@ -1,11 +1,31 @@
 
-# Patina
+# Patina DevOps
 
-This repository manages devops related content for Patina repositories.
+Patina is a UEFI firmware implementation written in Rust, developed under the
+[Open Device Partnership](https://github.com/OpenDevicePartnership) (ODP). The project spans several repositories:
+the core firmware and its supporting crates ([patina](https://github.com/OpenDevicePartnership/patina),
+[patina-paging](https://github.com/OpenDevicePartnership/patina-paging),
+[patina-mtrr](https://github.com/OpenDevicePartnership/patina-mtrr)), QEMU platform integration
+([patina-qemu](https://github.com/OpenDevicePartnership/patina-qemu) and
+[patina-dxe-core-qemu](https://github.com/OpenDevicePartnership/patina-dxe-core-qemu)), and other supporting repos
+with code and tools.
 
-## Patina Repository Release Process
+This repository, patina-devops, centralizes the DevOps configuration and automation shared across those
+repositories so that common CI/CD behavior, templates, and tooling are maintained in one place instead of being
+duplicated in every repo. It provides:
 
-This section details the process for publishing releases from each Patina repo that does so.
+- **Reusable GitHub Actions workflows and composite actions** ([.github/workflows](.github/workflows) and
+  [.github/actions](.github/actions)) for CI, release drafting, issue triage, label management, and more. Dependent
+  repos call back into these, pinned to a specific commit.
+- **Shared configuration templates** ([.sync](.sync)), such as issue/PR templates, Dependabot and markdownlint
+  config, and Rust tooling defaults. These are pushed out to dependent repos on a schedule by the
+  [Repo File Sync workflow](.github/workflows/FileSyncer.yml), based on the mapping in
+  [.sync/Files.yml](.sync/Files.yml).
+
+## Release Process Across Patina Repositories
+
+This section details the process for publishing releases from each Patina repository that does so, including
+patina-devops itself.
 
 ### [patina](https://github.com/OpenDevicePartnership/patina)
 
@@ -95,3 +115,39 @@ The high-level release process is:
 
 "Release 1" is an intermediate release and "Release 2" should be made immediately after as part of the overall release
 process.
+
+### [patina-devops](https://github.com/OpenDevicePartnership/patina-devops)
+
+A patina-devops release is often made when reusable GitHub workflows (those in `.github/workflows/`) are updated
+because they are referenced by version/commit hash from "leaf" workflows used in dependent repositories. They are called
+"leaf" workflows because they call the reusable workflows defined in patina-devops. File syncs can happen independently
+of releases when files in the `.sync` directory are updated. If the files being synced need to reference a specific
+version of patina-devops assets (like reusable workflows), then the file sync process should run after the repo release
+process is completed.
+
+Unlike the repos above, patina-devops does not publish to crates.io or attach release binaries. Its release
+produces a tagged GitHub release that dependent repos pin to for the shared workflows and actions described at the
+top of this document.
+
+- As pull requests are merged to `main`, a [release-drafter](https://github.com/release-drafter/release-drafter)
+  workflow (configured with [.github/release-draft-config.yml](.github/release-draft-config.yml)) automatically
+  maintains a draft release, computing the next semantic version from the labels applied to each merged PR.
+
+Release steps:
+
+- When it's time to release, publish the draft release from the repository's [Releases page](https://github.com/OpenDevicePartnership/patina-devops/releases).
+  This creates the new tag, for example `v0.3.17`.
+- Resolve the commit SHA that the new tag points to, for example with `git rev-parse v0.3.17`, or by viewing the
+  tag or release page on GitHub.
+- Update [.sync/Version.njk](.sync/Version.njk) in a pull request, setting `patina_devops` to the new tag and
+  `patina_devops_sha` to the resolved commit SHA.
+- Once that PR merges, every synced file that pins to `sync_version.patina_devops_sha`, such as
+  [update-release-draft.yml](.sync/workflows/leaf/update-release-draft.yml), picks up the new commit. The
+  [Repo File Sync workflow](.github/workflows/FileSyncer.yml) then opens PRs in each dependent repo to update to
+  that newly pinned commit.
+  - Read the file sync documentation in [.sync/README.md](.sync/README.md) for more details on how the synchronization
+    process works and to determine when it is necessary to manually trigger the workflow.
+- Merging those PRs is what brings each dependent repo onto the new patina-devops version.
+
+Dependent repos pin to a commit SHA rather than a tag or branch so they are not affected if a tag is ever moved or
+deleted. The `patina_devops` tag name is kept alongside the SHA only as a human-readable `# vX.Y.Z` comment.

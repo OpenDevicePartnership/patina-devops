@@ -19,6 +19,11 @@ This directory contains files that are synchronized to Patina repositories.
 - Anytime the workflow that synchronizes files is updated ([.github/workflows/FileSyncer.yml](https://github.com/OpenDevicePartnership/paina-devops/blob/main/.github/workflows/FileSyncer.yml))
 - [Manually](https://github.com/OpenDevicePartnership/patina-devops/actions/workflows/FileSyncer.yml)
 
+The file synchronization workflow is often disabled so files are not synced right away. This leaves it to maintainer
+discretion when to manually trigger the synchronization workflow. In some cases, the changes may not have any urgency
+and can wait until other changes are accumulated to reduce PR creation thrash and workflow runs in Patina repos. If the
+workflow is disabled, enable it, manually run it, and disable it again when done.
+
 ## How to Configure File Syncing
 
 All of the file synchronization settings are maintained in the [.sync/Files.yml](https://github.com/OpenDevicePartnership/patina-devops/blob/main/.sync/Files.yml)
