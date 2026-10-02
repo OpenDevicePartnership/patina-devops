@@ -188,10 +188,22 @@ command = "cargo"
 args = ["llvm-cov", "clean", "--workspace"]
 
 [tasks.test]
-description = "Runs tests via cargo-nextest. Example `cargo make test` or `cargo make test -- --nocapture`"
+description = "Runs tests via cargo-nextest. Example `cargo make test` or `cargo make test -- --nocapture`. In CI, also runs a second pass with the `ci_features` feature enabled to ensure tests do not depend on it being enabled."
 clear = true
+dependencies = ["test-default", "test-ci-features"]
+
+[tasks.test-default]
+description = "Runs tests via cargo-nextest with default features."
+private = true
 command = "cargo"
 args = ["nextest", "run", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
+
+[tasks.test-ci-features]
+description = "Runs tests via cargo-nextest with the `ci_features` feature enabled. Only runs when the `CI` environment variable is set."
+private = true
+condition = { env_set = ["CI"] }
+command = "cargo"
+args = ["nextest", "run", "--features", "ci_features", "@@split(CARGO_MAKE_TASK_ARGS,;)"]
 
 [tasks.test-cov]
 description = "Run tests and collect coverage data without generating reports."
@@ -221,8 +233,8 @@ command = "cargo"
 args = ["llvm-cov", "report", "--html", "--output-dir", "${CARGO_MAKE_WORKSPACE_WORKING_DIRECTORY}/target/coverage"]
 
 [tasks.coverage]
-description = "Build and run all tests and calculate coverage (runs test once and generates LCOV and HTML reports)."
-dependencies = ["test-cov", "coverage-lcov", "coverage-html"]
+description = "Build and run all tests and calculate coverage (runs test once and generates LCOV and HTML reports). In CI, also runs a second pass with the `ci_features` feature enabled (outside of coverage collection) since only `cargo make coverage` is run in CI."
+dependencies = ["test-cov", "coverage-lcov", "coverage-html", "test-ci-features"]
 clear = true
 
 [tasks.test-asan]
