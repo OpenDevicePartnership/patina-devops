@@ -427,8 +427,8 @@ end
 ''']
 
 [tasks.build-no-alloc]
-description = """Builds each package with `package.metadata.patina.no_alloc = true` in its Cargo.toml for
-x86_64-unknown-uefi with only `core` available, so any `alloc` use in it or its dependencies fails.
+description = """Builds each package with `package.metadata.patina.no_alloc = true` in its Cargo.toml with only
+`core` available, so any `alloc` use in it or its dependencies fails.
 
 Example:
     `cargo make build-no-alloc`
@@ -444,12 +444,15 @@ saved_rustflags = get_env RUSTFLAGS
 set_env RUSTFLAGS "-C link-arg=/subsystem:efi_boot_service_driver -C force-frame-pointers -C force-unwind-tables"
 set_env RUSTC_BOOTSTRAP 1
 
+targets = array x86_64-unknown-uefi aarch64-unknown-uefi
 indexes = range 0 ${metadata.packages.length}
 for i in ${indexes}
     no_alloc = get_by_name metadata.packages[${i}].metadata.patina.no_alloc
     if eq "${no_alloc}" true
         name = get_by_name metadata.packages[${i}].name
-        exec --fail-on-error cargo build -p ${name} --target x86_64-unknown-uefi -Zbuild-std=core --target-dir "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/no-alloc" --profile ${RUSTC_PROFILE}
+        for target in ${targets}
+            exec --fail-on-error cargo build -p ${name} --target ${target} -Zbuild-std=core --target-dir "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/no-alloc" --profile ${RUSTC_PROFILE}
+        end
     end
 end
 
