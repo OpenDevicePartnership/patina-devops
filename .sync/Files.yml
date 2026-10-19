@@ -451,6 +451,7 @@ group:
           - "build"
           - "build-x64"
           - "build-aarch64"
+          - "check-no-alloc-x64"
         run_cargo_vet: false
         test_mdbook: true
         trigger_branches:
