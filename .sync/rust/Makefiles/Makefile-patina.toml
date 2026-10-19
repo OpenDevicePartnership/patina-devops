@@ -426,13 +426,12 @@ if eq ${target} "aarch64-pc-windows-msvc"
 end
 ''']
 
-[tasks.build-no-alloc]
-description = """Builds each package with `package.metadata.patina.no_alloc = true` in its Cargo.toml with only
+[tasks.check-no-alloc]
+description = """Checks each package with `package.metadata.patina.no_alloc = true` in its Cargo.toml with only
 `core` available, so any `alloc` use in it or its dependencies fails.
 
 Example:
-    `cargo make build-no-alloc`
-    `cargo make -p release build-no-alloc`
+    `cargo make check-no-alloc`
 """
 clear = true
 script_runner = "@duckscript"
@@ -444,15 +443,13 @@ saved_rustflags = get_env RUSTFLAGS
 set_env RUSTFLAGS "-C link-arg=/subsystem:efi_boot_service_driver -C force-frame-pointers -C force-unwind-tables"
 set_env RUSTC_BOOTSTRAP 1
 
-targets = array x86_64-unknown-uefi aarch64-unknown-uefi
+# One check per package so their dependency features are not unified.
 indexes = range 0 ${metadata.packages.length}
 for i in ${indexes}
     no_alloc = get_by_name metadata.packages[${i}].metadata.patina.no_alloc
     if eq "${no_alloc}" true
         name = get_by_name metadata.packages[${i}].name
-        for target in ${targets}
-            exec --fail-on-error cargo build -p ${name} --target ${target} -Zbuild-std=core --target-dir "${CARGO_MAKE_CRATE_TARGET_DIRECTORY}/no-alloc" --profile ${RUSTC_PROFILE}
-        end
+        exec --fail-on-error cargo check -p ${name} --target x86_64-unknown-uefi --target aarch64-unknown-uefi -Zbuild-std=core
     end
 end
 
@@ -633,10 +630,10 @@ run_task = { name = [
         "all-preflight",
         "clippy",
         "check-no-default-features",
+        "check-no-alloc",
         "build",
         "build-x64",
         "build-aarch64",
-        "build-no-alloc",
         "patina-test",
         "coverage",
         "doc-test",
