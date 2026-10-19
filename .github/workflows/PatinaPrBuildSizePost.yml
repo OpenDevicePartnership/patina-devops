@@ -1,0 +1,260 @@
+# A reusable workflow to post a comment on a PR with the results of the Patina build size check.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+name: Patina PR Build Size Post
+
+on:
+  workflow_call:
+    inputs:
+      triggering-run-id:
+        description: "Completed PR build-size workflow run ID in the caller repository."
+        required: true
+        type: number
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+jobs:
+  comment:
+    name: Update Size Comparison Comment
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve Triggering Workflow Run
+        id: triggering-run
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          TRIGGERING_RUN_ID: ${{ inputs.triggering-run-id }}
+        with:
+          script: |
+            const runId = Number(process.env.TRIGGERING_RUN_ID);
+            if (!Number.isSafeInteger(runId) || runId <= 0) {
+              throw new Error('A valid triggering workflow run ID is required.');
+            }
+            const { data: run } = await github.rest.actions.getWorkflowRun({
+              ...context.repo, run_id: runId,
+            });
+            const eligible = run.event === 'workflow_run' && run.status === 'completed' &&
+              run.conclusion !== 'cancelled';
+            core.setOutput('eligible', eligible);
+            if (!eligible) {
+              core.notice('Not a completed PR size comparison.');
+              return;
+            }
+            core.setOutput('metadata', {
+              id: run.id, run_attempt: run.run_attempt, event: run.event, status: run.status,
+              conclusion: run.conclusion, head_sha: run.head_sha, head_branch: run.head_branch,
+              head_repository: run.head_repository, pull_requests: run.pull_requests,
+            });
+
+      - name: Download Measurements
+        id: measurements
+        if: steps.triggering-run.outputs.eligible == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.triggering-run-id }}
+          pattern: patina-build-size-*
+          path: metrics
+
+      - name: Update PR Comment
+        if: steps.triggering-run.outputs.eligible == 'true'
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          DOWNLOAD_OUTCOME: ${{ steps.measurements.outcome }}
+          TRIGGERING_RUN: ${{ steps.triggering-run.outputs.metadata }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+
+            const marker = '<!-- patina-pr-build-size -->';
+            const configurations = ['Q35-DEBUG', 'Q35-RELEASE', 'ArmVirt-DEBUG', 'ArmVirt-RELEASE'];
+            const shaPattern = /^[a-f0-9]{40}$/;
+
+            function supportedBranch(branch) {
+              return branch === 'main' || branch.startsWith('feature/');
+            }
+
+            function readJsonArtifact(directory, artifact, filename) {
+              const file = path.join(directory, artifact, filename);
+              if (!fs.existsSync(file)) {
+                return undefined;
+              }
+              if (!fs.lstatSync(file).isFile() || fs.statSync(file).size > 8192) {
+                throw new Error(`Invalid measurement artifact file: ${file}`);
+              }
+              return JSON.parse(fs.readFileSync(file, 'utf8'));
+            }
+
+            function readReport(directory, revision, headSha) {
+              const report = readJsonArtifact(directory, `patina-build-size-${revision}`, 'build-size.json');
+              if (report === undefined) {
+                return null;
+              }
+              if (!report || typeof report !== 'object' || Array.isArray(report) ||
+                  report.revision !== revision || report.head_sha !== headSha ||
+                  !shaPattern.test(report.head_sha) || !shaPattern.test(report.base_sha) ||
+                  !shaPattern.test(report.integration_sha) ||
+                  !['success', 'failed', 'incompatible'].includes(report.status) ||
+                  !report.sizes || typeof report.sizes !== 'object' || Array.isArray(report.sizes)) {
+                throw new Error(`Invalid ${revision} measurement metadata`);
+              }
+              const keys = Object.keys(report.sizes);
+              if (report.status === 'success') {
+                if (keys.length !== configurations.length || configurations.some(key =>
+                  !Number.isSafeInteger(report.sizes[key]) || report.sizes[key] <= 0)) {
+                  throw new Error(`Invalid ${revision} EFI file sizes`);
+                }
+              } else if (keys.length !== 0) {
+                throw new Error(`Unexpected ${revision} sizes for an unsuccessful build`);
+              }
+              return report;
+            }
+
+            function renderComment({ base, pr, run, headSha, repository, serverUrl }) {
+              if (base && pr && ['base_sha', 'head_sha', 'integration_sha'].some(key => base[key] !== pr[key])) {
+                throw new Error('Base and PR measurements describe different comparisons');
+              }
+              const runUrl = `${serverUrl}/${repository}/actions/runs/${run.id}`;
+              const lines = [
+                marker,
+                `<!-- patina-build-size-run: ${run.id}:${run.run_attempt} -->`,
+                '## Patina build size comparison',
+                '',
+                `PR head: [\`${headSha.slice(0, 12)}\`](${serverUrl}/${repository}/commit/${headSha}).`,
+              ];
+              const snapshot = base || pr;
+              if (snapshot) {
+                lines.push(
+                  `Target branch snapshot: [\`${snapshot.base_sha.slice(0, 12)}\`](${serverUrl}/${repository}/commit/${snapshot.base_sha}).`,
+                  `QEMU integration: [\`${snapshot.integration_sha.slice(0, 12)}\`](${serverUrl}/OpenDevicePartnership/patina-dxe-core-qemu/commit/${snapshot.integration_sha}).`,
+                );
+              }
+              lines.push(
+                '',
+                '| Platform | Build | Target branch (bytes) | PR (bytes) | Change (bytes) | Change (%) |',
+                '| :-- | :-- | --: | --: | --: | --: |',
+              );
+              for (const configuration of configurations) {
+                const [platform, profile] = configuration.split('-');
+                const before = base?.status === 'success' ? base.sizes[configuration] : null;
+                const after = pr?.status === 'success' ? pr.sizes[configuration] : null;
+                const delta = before !== null && after !== null ? after - before : null;
+                const signed = value => `${value > 0 ? '+' : ''}${value.toLocaleString('en-US')}`;
+                const percent = delta === null ? 'N/A' :
+                  `${delta > 0 ? '+' : ''}${(delta / before * 100).toFixed(2)}%`;
+                lines.push(`| ${platform} | ${profile} | ${before?.toLocaleString('en-US') ?? 'N/A'} | ` +
+                  `${after?.toLocaleString('en-US') ?? 'N/A'} | ${delta === null ? 'N/A' : signed(delta)} | ${percent} |`);
+              }
+              for (const [label, report] of [['Target branch', base], ['PR', pr]]) {
+                if (!report) {
+                  lines.push('', `**${label}: measurements unavailable.** Check the workflow logs; no size is assumed.`);
+                } else if (report.status === 'incompatible') {
+                  lines.push('', `**${label}: version mismatch.** Its Patina major version does not match ` +
+                    'the QEMU integration dependency. Update patina-dxe-core-qemu before comparing sizes.');
+                } else if (report.status === 'failed') {
+                  lines.push('', `**${label}: build/setup failed.** See the workflow logs and build log artifacts.`);
+                }
+              }
+              lines.push(
+                '',
+                'Sizes are linked `.efi` file sizes, not library archive totals, PDB sizes, or complete firmware ROM sizes.',
+                'Only crates/features linked into Q35 and ArmVirt are represented. DEBUG and RELEASE use the QEMU validation build settings.',
+                '',
+                `[Build logs and artifacts](${runUrl}) (workflow result: ${run.conclusion}).`,
+              );
+              return lines.join('\n');
+            }
+
+            async function publish({ github, context, core, run, directory, downloadOutcome }) {
+              if (run.event !== 'workflow_run' || run.status !== 'completed' || run.conclusion === 'cancelled') {
+                core.notice('Not a completed PR size comparison.');
+                return;
+              }
+              const metadata = readJsonArtifact(directory, 'patina-build-size-pr-metadata', 'pr-metadata.json');
+              if (metadata === undefined) {
+                core.notice('PR metadata artifact unavailable; no comparison PR can be identified.');
+                return;
+              }
+              if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata) ||
+                  !Number.isSafeInteger(metadata.source_run_id) || metadata.source_run_id <= 0 ||
+                  typeof metadata.skipped !== 'boolean') {
+                throw new Error('Invalid caller PR metadata');
+              }
+              if (metadata.skipped) {
+                core.notice('The caller marked this PR size comparison as skipped.');
+                return;
+              }
+              if (!Number.isSafeInteger(metadata.pr_number) || metadata.pr_number <= 0 ||
+                  !shaPattern.test(metadata.head_sha) || !shaPattern.test(metadata.base_sha) ||
+                  typeof metadata.base_ref !== 'string' || !supportedBranch(metadata.base_ref)) {
+                throw new Error('Invalid resolved PR metadata');
+              }
+              const { data: sourceRun } = await github.rest.actions.getWorkflowRun({
+                ...context.repo, run_id: metadata.source_run_id,
+              });
+              if (sourceRun.id !== metadata.source_run_id || sourceRun.name !== 'CI' ||
+                  sourceRun.event !== 'pull_request' || sourceRun.status !== 'completed' ||
+                  sourceRun.conclusion !== 'success' || sourceRun.head_sha !== metadata.head_sha) {
+                throw new Error('PR metadata does not match a successful source CI run.');
+              }
+              // The comparison workflow's own SHA/ref describe the default branch, not the PR.
+              const associated = sourceRun.pull_requests.length ? sourceRun.pull_requests :
+                await github.paginate(github.rest.repos.listPullRequestsAssociatedWithCommit, {
+                  ...context.repo, commit_sha: metadata.head_sha, per_page: 100,
+                });
+              const candidates = associated.filter(pr => pr.number === metadata.pr_number);
+              if (candidates.length === 0) {
+                core.notice('No PR is associated with this comparison revision.');
+                return;
+              }
+              for (const candidate of candidates) {
+                const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: candidate.number });
+                if (pr.state !== 'open' || pr.head.sha !== metadata.head_sha || pr.head.ref !== sourceRun.head_branch ||
+                    !pr.head.repo || pr.head.repo.full_name !== sourceRun.head_repository?.full_name ||
+                    pr.base.repo.full_name !== `${context.repo.owner}/${context.repo.repo}` || !supportedBranch(pr.base.ref)) {
+                  core.notice(`Skipping stale, closed, or unsupported PR #${pr.number}.`);
+                  continue;
+                }
+                if (metadata.base_ref !== pr.base.ref) {
+                  core.notice('The PR was retargeted after this comparison started.');
+                  continue;
+                }
+                const base = readReport(directory, 'base', metadata.head_sha);
+                const head = readReport(directory, 'pr', metadata.head_sha);
+                if ([base, head].some(report => report && report.base_sha !== metadata.base_sha)) {
+                  throw new Error("Measurements do not match the caller's target branch snapshot");
+                }
+                if (downloadOutcome !== 'success' || !base || !head) {
+                  core.warning('Size measurements are incomplete; reporting unavailable results explicitly.');
+                }
+                const body = renderComment({
+                  base, pr: head, run, headSha: metadata.head_sha,
+                  repository: `${context.repo.owner}/${context.repo.repo}`,
+                  serverUrl: context.serverUrl,
+                });
+                const comments = await github.paginate(github.rest.issues.listComments, {
+                  ...context.repo, issue_number: pr.number, per_page: 100,
+                });
+                const existing = comments.find(comment =>
+                  comment.user.login === 'github-actions[bot]' && comment.body?.startsWith(marker));
+                if (existing) {
+                  const previous = /<!-- patina-build-size-run: (\d+):(\d+) -->/.exec(existing.body);
+                  if (previous && (Number(previous[1]) > run.id ||
+                      (Number(previous[1]) === run.id && Number(previous[2]) > run.run_attempt))) {
+                    core.notice('A newer size comparison has already been published.');
+                    continue;
+                  }
+                  await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
+                } else {
+                  await github.rest.issues.createComment({ ...context.repo, issue_number: pr.number, body });
+                }
+              }
+            }
+
+            await publish({ github, context, core, run: JSON.parse(process.env.TRIGGERING_RUN), directory: 'metrics',
+              downloadOutcome: process.env.DOWNLOAD_OUTCOME });

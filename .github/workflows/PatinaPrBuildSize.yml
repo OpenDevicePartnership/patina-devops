@@ -1,0 +1,235 @@
+# A reusable workflow to build and compare sizes between two Patina commits.
+#
+# This workflow attempts to compile both Q35 and ArmVirt platforms in DEBUG and RELEASE builds
+# using <https://github.com/OpenDevicePartnership/patina-dxe-core-qemu> using two commits from
+# <https://github.com/OpenDevicePartnership/patina> provided via `base-sha` and `head-sha`. The
+# sizes from these 8 compilations will be compared to show a relative difference between the two.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+name: Patina PR Build Size
+
+on:
+  workflow_call:
+    inputs:
+      base-sha:
+        description: "Target branch commit SHA to build in the caller repository."
+        required: true
+        type: string
+      head-sha:
+        description: "PR head commit SHA to build in the caller repository."
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Resolve QEMU Integration Revision
+    runs-on: ubuntu-latest
+    outputs:
+      integration_sha: ${{ steps.revisions.outputs.integration_sha }}
+    steps:
+      - name: Resolve QEMU Integration Revision
+        id: revisions
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          BASE_SHA: ${{ inputs.base-sha }}
+          HEAD_SHA: ${{ inputs.head-sha }}
+        with:
+          script: |
+            if (![process.env.BASE_SHA, process.env.HEAD_SHA].every(sha => /^[a-f0-9]{40}$/.test(sha))) {
+              throw new Error('Valid target branch and PR head commit SHAs are required.');
+            }
+            const { data: integration } = await github.rest.repos.getCommit({
+              owner: 'OpenDevicePartnership', repo: 'patina-dxe-core-qemu', ref: 'main',
+            });
+            core.setOutput('integration_sha', integration.sha);
+
+  vars:
+    name: Get QEMU Build Environment
+    uses: OpenDevicePartnership/patina-devops/.github/workflows/qemu-constants.yml@8c8e0f0501c61277de27ea898cffd53dc4535d5f
+
+  build:
+    name: Build ${{ matrix.revision }}
+    needs: [prepare, vars]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    container:
+      image: ${{ needs.vars.outputs.container-image }}
+      volumes:
+        - /home/runner/work/_actions:/home/runner/work/_actions
+    strategy:
+      fail-fast: false
+      matrix:
+        revision: [base, pr]
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - name: Checkout Patina Revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ matrix.revision == 'base' && inputs.base-sha || inputs.head-sha }}
+          path: patina
+          persist-credentials: false
+          allow-unsafe-pr-checkout: true
+
+      - name: Checkout Identical QEMU Integration
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: OpenDevicePartnership/patina-dxe-core-qemu
+          ref: ${{ needs.prepare.outputs.integration_sha }}
+          path: integration
+          persist-credentials: false
+
+      - name: Check Major Version Compatibility
+        id: compatibility
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          import pathlib
+          import re
+          import tomllib
+
+          def load(path):
+              return tomllib.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+
+          version = load("patina/Cargo.toml")["workspace"]["package"]["version"]
+          dependency = load("integration/Cargo.toml")["dependencies"]["patina"]
+          requirement = dependency["version"] if isinstance(dependency, dict) else dependency
+          match = re.fullmatch(r"\^?(\d+)(?:\.\d+){0,2}", requirement)
+          if match is None:
+              raise SystemExit(f"Unsupported integration version requirement: {requirement}")
+          compatible = int(version.split(".")[0]) == int(match[1])
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"compatible={str(compatible).lower()}\n")
+          toolchain = load("integration/rust-toolchain.toml")["toolchain"]["channel"]
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write(f"RUSTUP_TOOLCHAIN={toolchain}\n")
+          if not compatible:
+              print(f"::warning::Patina {version} does not match integration requirement {requirement}.")
+          PY
+
+      - name: Install QEMU Rust Tools
+        if: steps.compatibility.outputs.compatible == 'true'
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@8c8e0f0501c61277de27ea898cffd53dc4535d5f
+        with:
+          rust-toolchain-file: integration/rust-toolchain.toml
+
+      - name: Ensure Both UEFI Targets Are Installed
+        if: steps.compatibility.outputs.compatible == 'true'
+        shell: bash
+        run: rustup target add x86_64-unknown-uefi aarch64-unknown-uefi
+
+      - name: Set Container Build Paths
+        shell: bash
+        run: |
+          {
+            echo "PATINA_REPO=$GITHUB_WORKSPACE/patina"
+            echo "DEPS_DIR=$GITHUB_WORKSPACE/deps"
+            echo "DXE_CORE_QEMU_REPO=$GITHUB_WORKSPACE/integration"
+            echo "FW_PATCHER_REPO=$GITHUB_WORKSPACE/deps/patina-fw-patcher"
+            echo "PATINA_QEMU_REPO=$GITHUB_WORKSPACE/deps/patina-qemu"
+            echo "CARGO_TARGET_DIR=$GITHUB_WORKSPACE/integration/target"
+          } >> "$GITHUB_ENV"
+          mkdir -p "$GITHUB_WORKSPACE/deps"
+
+      - name: Build DEBUG and RELEASE Q35 and ArmVirt
+        id: firmware
+        if: steps.compatibility.outputs.compatible == 'true'
+        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@8c8e0f0501c61277de27ea898cffd53dc4535d5f
+        with:
+          patina-repo: ${{ env.PATINA_REPO }}
+          deps-dir: ${{ env.DEPS_DIR }}
+          dxe-core-qemu-repo: ${{ env.DXE_CORE_QEMU_REPO }}
+          fw-patcher-repo: ${{ env.FW_PATCHER_REPO }}
+          patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
+          log-file: ${{ env.DEPS_DIR }}/build.log
+
+      - name: Verify Workspace Crate Patches
+        id: patches
+        if: steps.firmware.outcome == 'success'
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import tomllib
+
+          def load(path):
+              return tomllib.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+
+          patches = load("integration/Cargo.toml")["patch"]["crates-io"]
+          for name in ("patina", "patina_dxe_core"):
+              if "path" not in patches[name]:
+                  raise SystemExit(f"Missing local crate patch for {name}")
+          unpatched = [
+              f'{package["name"]} {package["version"]}'
+              for package in load("integration/Cargo.lock")["package"]
+              if package["name"] in patches and "source" in package
+          ]
+          if unpatched:
+              raise SystemExit(f"Workspace crates resolved from a registry instead of local patches: {unpatched}")
+          PY
+
+      - name: Record EFI File Sizes
+        if: always()
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        env:
+          REVISION: ${{ matrix.revision }}
+          BASE_SHA: ${{ inputs.base-sha }}
+          HEAD_SHA: ${{ inputs.head-sha }}
+          INTEGRATION_SHA: ${{ needs.prepare.outputs.integration_sha }}
+          COMPATIBLE: ${{ steps.compatibility.outputs.compatible }}
+          BUILD_OUTCOME: ${{ steps.firmware.outcome }}
+          PATCH_OUTCOME: ${{ steps.patches.outcome }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const status = process.env.COMPATIBLE === 'false' ? 'incompatible' :
+              process.env.BUILD_OUTCOME === 'success' && process.env.PATCH_OUTCOME === 'success' ? 'success' : 'failed';
+            const sizes = {};
+            if (status === 'success') {
+              for (const [platform, target, binary] of [
+                ['Q35', 'x86_64-unknown-uefi', 'qemu_q35_dxe_core'],
+                ['ArmVirt', 'aarch64-unknown-uefi', 'qemu_armvirt_dxe_core'],
+              ]) {
+                for (const [profile, directory] of [['DEBUG', 'debug'], ['RELEASE', 'release']]) {
+                  const file = path.join(process.env.GITHUB_WORKSPACE, 'integration', 'target',
+                    target, directory, `${binary}.efi`);
+                  const info = fs.statSync(file);
+                  if (!info.isFile() || info.size <= 0) {
+                    throw new Error(`Missing or empty EFI binary: ${file}`);
+                  }
+                  sizes[`${platform}-${profile}`] = info.size;
+                }
+              }
+            }
+            fs.mkdirSync('metrics', { recursive: true });
+            fs.writeFileSync('metrics/build-size.json', JSON.stringify({
+              revision: process.env.REVISION,
+              base_sha: process.env.BASE_SHA,
+              head_sha: process.env.HEAD_SHA,
+              integration_sha: process.env.INTEGRATION_SHA,
+              status, sizes,
+            }));
+
+      - name: Upload Size Measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: patina-build-size-${{ matrix.revision }}
+          path: metrics/build-size.json
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: patina-size-build-log-${{ matrix.revision }}
+          path: deps/build.log
+          if-no-files-found: ignore
+          retention-days: 7
