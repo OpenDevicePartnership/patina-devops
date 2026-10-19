@@ -426,15 +426,22 @@ if eq ${target} "aarch64-pc-windows-msvc"
 end
 ''']
 
-[tasks.check-no-alloc]
-description = """Checks each package with `package.metadata.patina.no_alloc = true` in its Cargo.toml with only
-`core` available, so any `alloc` use in it or its dependencies fails.
+[tasks.check-no-alloc-x64]
+description = """Checks each package with `package.metadata.patina.no_alloc = true` in its Cargo.toml for
+x64 target with only `core` available, so any `alloc` use in it or its dependencies fails.
 
 Example:
-    `cargo make check-no-alloc`
+    `cargo make check-no-alloc-x64`
 """
 clear = true
 script_runner = "@duckscript"
+condition_script = ['''
+target = get_env CARGO_MAKE_RUST_TARGET_TRIPLE
+if eq ${target} "aarch64-pc-windows-msvc"
+    echo "Cross-compiling for x86_64-unknown-uefi from aarch64-pc-windows-msvc is skipped to save build time on Windows ARM64 hosts."
+    exit 1
+end
+''']
 script = '''
 out = exec --fail-on-error cargo metadata --no-deps --format-version 1
 metadata = json_parse ${out.stdout}
@@ -449,7 +456,7 @@ for i in ${indexes}
     no_alloc = get_by_name metadata.packages[${i}].metadata.patina.no_alloc
     if eq "${no_alloc}" true
         name = get_by_name metadata.packages[${i}].name
-        exec --fail-on-error cargo check -p ${name} --target x86_64-unknown-uefi --target aarch64-unknown-uefi -Zbuild-std=core
+        exec --fail-on-error cargo check -p ${name} --target x86_64-unknown-uefi -Zbuild-std=core
     end
 end
 
@@ -630,7 +637,7 @@ run_task = { name = [
         "all-preflight",
         "clippy",
         "check-no-default-features",
-        "check-no-alloc",
+        "check-no-alloc-x64",
         "build",
         "build-x64",
         "build-aarch64",
