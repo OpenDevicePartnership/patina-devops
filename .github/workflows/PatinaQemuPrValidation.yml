@@ -36,6 +36,11 @@ on:
         required: false
         type: string
         default: ''
+      base-ref:
+        description: "Target branch to checkout in the PR repository. Enables EFI size comparison in either mode."
+        required: false
+        type: string
+        default: ''
       pr-number:
         description: "Pull request number in the caller repository"
         required: true
@@ -135,7 +140,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       assets_complete: ${{ steps.validate-qemu-assets.outputs.assets_complete }}
-      dxe_core_qemu_sha: ${{ steps.dep-shas.outputs.dxe_core_qemu_sha }}
+      checkout_sha: ${{ steps.checkout.outputs.commit }}
+      dxe_core_qemu_sha: ${{ steps.integration-sha.outputs.sha }}
       fw_patcher_sha: ${{ steps.dep-shas.outputs.fw_patcher_sha }}
       fw_release_tag: ${{ steps.fw-assets.outputs.tag }}
       mismatch: ${{ steps.compare.outputs.mismatch }}
@@ -165,6 +171,7 @@ jobs:
           fi
 
       - name: Checkout Repository
+        id: checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           allow-unsafe-pr-checkout: true # Temporary. Tracked in https://github.com/OpenDevicePartnership/patina-devops/issues/166.
@@ -322,6 +329,19 @@ jobs:
           echo "  patina-fw-patcher:    $fw_sha"
           echo "  patina-qemu:          $qemu_sha"
 
+      - name: Check Size Comparison Integration SHA
+        id: integration-sha
+        shell: bash
+        env:
+          INTEGRATION_SHA: ${{ inputs.dxe-core-qemu-ref != '' && steps.checkout.outputs.commit || steps.dep-shas.outputs.dxe_core_qemu_sha }}
+          COMPARE_SIZES: ${{ inputs.base-ref != '' }}
+        run: |
+          if [[ "$INTEGRATION_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "sha=$INTEGRATION_SHA" >> "$GITHUB_OUTPUT"
+          elif [ "$COMPARE_SIZES" = "true" ]; then
+            echo "::warning::QEMU integration commit could not be resolved. Skipping size comparison; QEMU validation will continue."
+          fi
+
       - name: Check Major Version Compatibility
         id: compare
         shell: bash
@@ -436,6 +456,135 @@ jobs:
               out.write(f'armvirt_url={assets[armvirt_name]}\n')
           PY
 
+  build-size-baseline:
+    name: Build Target Branch EFI Binaries
+    needs: [vars, preflight]
+    if: inputs.base-ref != '' && needs.preflight.outputs.assets_complete == 'true' && needs.preflight.outputs.dxe_core_qemu_sha != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    continue-on-error: true
+    container:
+      image: ${{ needs.vars.outputs['container-image'] }}
+      volumes:
+        - /home/runner/work/_actions:/home/runner/work/_actions
+    outputs:
+      base_sha: ${{ steps.checkout.outputs.commit }}
+      status: ${{ steps.compatibility.outputs.compatible == 'false' && 'incompatible' || steps.build.outcome == 'success' && steps.efi-artifact.outcome == 'success' && 'success' || 'failed' }}
+    steps:
+      - name: Set Baseline Container Paths
+        shell: bash
+        env:
+          MODE: ${{ needs.preflight.outputs.mode }}
+        run: |
+          {
+            if [ "$MODE" = "patina" ]; then
+              echo "PATINA_REPO=$GITHUB_WORKSPACE"
+              echo "DXE_CORE_QEMU_REPO=$(dirname "$GITHUB_WORKSPACE")/deps/patina-dxe-core-qemu"
+            else
+              echo "PATINA_REPO="
+              echo "DXE_CORE_QEMU_REPO=$GITHUB_WORKSPACE"
+            fi
+            echo "DEPS_DIR=$(dirname "$GITHUB_WORKSPACE")/deps"
+          } >> "$GITHUB_ENV"
+
+      - name: Checkout Target Revision
+        id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
+          ref: ${{ inputs.base-ref }}
+          persist-credentials: false
+
+      - name: Checkout Shared QEMU Integration
+        if: inputs.patina-ref != ''
+        shell: bash
+        env:
+          DXE_REF: ${{ needs.preflight.outputs.dxe_core_qemu_sha }}
+        run: |
+          git clone --no-checkout https://github.com/OpenDevicePartnership/patina-dxe-core-qemu.git "$DXE_CORE_QEMU_REPO"
+          git -C "$DXE_CORE_QEMU_REPO" fetch --depth=1 origin "$DXE_REF"
+          git -C "$DXE_CORE_QEMU_REPO" checkout --detach FETCH_HEAD
+
+      - name: Setup Python (Baseline)
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ needs.vars.outputs['python-version'] }}
+
+      - name: Check Baseline Compatibility and Toolchain
+        id: compatibility
+        shell: python
+        env:
+          MODE: ${{ needs.preflight.outputs.mode }}
+        run: |
+          import os
+          import pathlib
+          import re
+          import tomllib
+
+          compatible = True
+          integration_root = pathlib.Path(os.environ["DXE_CORE_QEMU_REPO"])
+          if os.environ["MODE"] == "patina":
+              local = tomllib.loads((pathlib.Path(os.environ["PATINA_REPO"]) / "Cargo.toml").read_text(encoding="utf-8"))
+              integration = tomllib.loads((integration_root / "Cargo.toml").read_text(encoding="utf-8"))
+              version = local["workspace"]["package"]["version"]
+              dependency = integration["dependencies"]["patina"]
+              requirement = dependency["version"] if isinstance(dependency, dict) else dependency
+              match = re.fullmatch(r"\^?(\d+)(?:\.\d+){0,2}", requirement)
+              if match is None:
+                  raise SystemExit(f"Unsupported integration version requirement: {requirement}")
+              compatible = int(version.split(".")[0]) == int(match[1])
+              if not compatible:
+                  print(f"::warning::Baseline Patina {version} does not match integration requirement {requirement}.")
+          toolchain = tomllib.loads((integration_root / "rust-toolchain.toml").read_text(encoding="utf-8"))
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as environment:
+              environment.write(f'RUSTUP_TOOLCHAIN={toolchain["toolchain"]["channel"]}\n')
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"compatible={str(compatible).lower()}\n")
+
+      - name: Download Baseline Rust Tools
+        if: steps.compatibility.outputs.compatible == 'true'
+        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+
+      - name: Install Baseline UEFI Targets
+        if: steps.compatibility.outputs.compatible == 'true'
+        shell: bash
+        run: rustup target add x86_64-unknown-uefi aarch64-unknown-uefi
+
+      - name: Build Baseline DEBUG and RELEASE Q35 and ArmVirt
+        id: build
+        if: steps.compatibility.outputs.compatible == 'true'
+        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
+        with:
+          patina-repo: ${{ env.PATINA_REPO }}
+          deps-dir: ${{ env.DEPS_DIR }}
+          dxe-core-qemu-repo: ${{ env.DXE_CORE_QEMU_REPO }}
+          log-file: ${{ env.DEPS_DIR }}/baseline-build.log
+
+      - name: Upload Baseline EFI Binaries
+        id: efi-artifact
+        if: steps.build.outcome == 'success'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: patina-qemu-efi-base
+          path: |
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/x86_64-unknown-uefi/debug/qemu_q35_dxe_core.efi
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/x86_64-unknown-uefi/release/qemu_q35_dxe_core.efi
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/aarch64-unknown-uefi/debug/qemu_armvirt_dxe_core.efi
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/aarch64-unknown-uefi/release/qemu_armvirt_dxe_core.efi
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/build-metadata.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+      - name: Upload Baseline Build Log
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qemu-baseline-build-log
+          path: ${{ env.DEPS_DIR }}/baseline-build.log
+          if-no-files-found: warn
+          retention-days: 7
+
   validate-qemu-linux:
     name: Validate QEMU - ${{ matrix.platform }} (Linux)
     runs-on: ubuntu-latest
@@ -478,11 +627,15 @@ jobs:
       matrix:
         include:
           - platform: Q35
+            target: x86_64-unknown-uefi
+            binary: qemu_q35_dxe_core
             fw_zip: q35.zip
             fw_cache_key_suffix: q35
             rom_subpath: Q35/DEBUG Linux/QEMUQ35_CODE.fd
             log_file: q35-linux.log
           - platform: ArmVirt
+            target: aarch64-unknown-uefi
+            binary: qemu_armvirt_dxe_core
             fw_zip: armvirt.zip
             fw_cache_key_suffix: armvirt
             rom_subpath: ArmVirt/DEBUG Linux/QEMU_EFI.fd
@@ -494,7 +647,7 @@ jobs:
         with:
           allow-unsafe-pr-checkout: true # Temporary. Tracked in https://github.com/OpenDevicePartnership/patina-devops/issues/166.
           repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
-          ref: ${{ inputs.patina-ref || inputs.dxe-core-qemu-ref }}
+          ref: ${{ needs.preflight.outputs.checkout_sha }}
 
       # In container jobs, ${{ github.workspace }} resolves to the HOST
       # path which does not exist inside the container. The shell variable
@@ -512,7 +665,7 @@ jobs:
               echo "DXE_CORE_QEMU_REPO=$GITHUB_WORKSPACE"
             else
               echo "PATINA_REPO=$GITHUB_WORKSPACE"
-              echo "DXE_CORE_QEMU_REPO=$GITHUB_WORKSPACE/../deps/patina-dxe-core-qemu"
+              echo "DXE_CORE_QEMU_REPO=$(dirname "$GITHUB_WORKSPACE")/deps/patina-dxe-core-qemu"
             fi
             echo "DEPS_DIR=$GITHUB_WORKSPACE/../deps"
             echo "FW_PATCHER_REPO=$GITHUB_WORKSPACE/../deps/patina-fw-patcher"
@@ -529,8 +682,9 @@ jobs:
           mkdir -p "$LOG_DIR"
 
       - name: Setup Python (Linux)
-        shell: bash
-        run: python3 --version
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ needs.vars.outputs['python-version'] }}
 
       - name: Download Rust Tools
         uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
@@ -559,11 +713,26 @@ jobs:
         uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
         with:
           deps-dir: ${{ env.DEPS_DIR }}
+          dxe-core-qemu-ref: ${{ needs.preflight.outputs.dxe_core_qemu_sha }}
           dxe-core-qemu-repo: ${{ env.DXE_CORE_QEMU_REPO }}
           fw-patcher-repo: ${{ env.FW_PATCHER_REPO }}
           log-file: ${{ env.LOG_DIR }}/${{ matrix.log_file }}
           patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
           patina-repo: ${{ env.PATINA_REPO }}
+
+      - name: Upload PR EFI Binaries
+        continue-on-error: true
+        if: inputs.base-ref != '' && needs.preflight.outputs.dxe_core_qemu_sha != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: patina-qemu-efi-pr-${{ matrix.platform }}
+          path: |
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/${{ matrix.target }}/debug/${{ matrix.binary }}.efi
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/${{ matrix.target }}/release/${{ matrix.binary }}.efi
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/build-metadata.json
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
 
       - name: Run QEMU Validation - ${{ matrix.platform }} (Linux)
         uses: OpenDevicePartnership/patina-devops/.github/actions/run-patina-qemu-validation@main
@@ -607,7 +776,7 @@ jobs:
         with:
           allow-unsafe-pr-checkout: true # Temporary. Tracked in https://github.com/OpenDevicePartnership/patina-devops/issues/166.
           repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
-          ref: ${{ inputs.patina-ref || inputs.dxe-core-qemu-ref }}
+          ref: ${{ needs.preflight.outputs.checkout_sha }}
 
       - name: Create Directories
         shell: pwsh
@@ -651,6 +820,7 @@ jobs:
         uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
         with:
           deps-dir: ${{ env.DEPS_DIR }}
+          dxe-core-qemu-ref: ${{ needs.preflight.outputs.dxe_core_qemu_sha }}
           dxe-core-qemu-repo: ${{ env.DXE_CORE_QEMU_REPO }}
           fw-patcher-repo: ${{ env.FW_PATCHER_REPO }}
           log-file: ${{ env.LOG_DIR }}/q35-windows.log
@@ -768,15 +938,18 @@ jobs:
   emit-pr-metadata:
     name: Emit PR Metadata
     runs-on: ubuntu-latest
-    needs: [preflight, validate-qemu-linux, validate-qemu-windows]
+    needs: [preflight, build-size-baseline, validate-qemu-linux, validate-qemu-windows]
     if: always()
     steps:
       - name: Write PR Metadata
         shell: bash
+        env:
+          SIZE_BASE_REF: ${{ inputs.base-ref }}
         run: |
           mkdir -p metadata
           python - <<'PY'
           import json
+          import os
           import pathlib
 
           preflight_result = '${{ needs.preflight.result }}'
@@ -785,9 +958,19 @@ jobs:
 
           metadata = {
               'pr_number': ${{ inputs.pr-number }},
+              'run_id': int(os.environ['GITHUB_RUN_ID']),
+              'run_attempt': int(os.environ['GITHUB_RUN_ATTEMPT']),
               'mode': '${{ needs.preflight.outputs.mode }}',
               'head_sha': '${{ inputs.head-sha }}',
               'patina_ref': '${{ inputs.patina-ref || needs.preflight.outputs.patina_sha }}',
+              'size_comparison': {
+                  'enabled': bool(os.environ['SIZE_BASE_REF']),
+                  'base_sha': '${{ needs.build-size-baseline.outputs.base_sha }}',
+                  'base_ref': os.environ['SIZE_BASE_REF'].removeprefix('refs/heads/'),
+                  'source_sha': '${{ needs.preflight.outputs.checkout_sha }}',
+                  'integration_sha': '${{ needs.preflight.outputs.dxe_core_qemu_sha }}',
+                  'baseline_status': '${{ needs.build-size-baseline.outputs.status || needs.build-size-baseline.result }}',
+              },
               'readiness': {
                   'assets_complete': '${{ needs.preflight.outputs.assets_complete }}',
                   'job_result': preflight_result,
@@ -800,7 +983,7 @@ jobs:
                   'patina_dxe_core_qemu_dep_major': '${{ needs.preflight.outputs.patina_dxe_core_qemu_dep_major }}',
               },
               'deps': {
-                  'dxe_core_qemu_sha': '${{ inputs.dxe-core-qemu-ref || needs.preflight.outputs.dxe_core_qemu_sha }}',
+                  'dxe_core_qemu_sha': '${{ needs.preflight.outputs.dxe_core_qemu_sha }}',
                   'fw_patcher_sha': '${{ needs.preflight.outputs.fw_patcher_sha }}',
                   'patina_qemu_fw_tag': '${{ needs.preflight.outputs.patina_qemu_fw_tag }}',
                   'patina_qemu_sha': '${{ needs.preflight.outputs.patina_qemu_sha }}',
@@ -828,3 +1011,4 @@ jobs:
           name: patina-qemu-pr-metadata
           path: metadata/pr-metadata.json
           if-no-files-found: error
+          overwrite: true

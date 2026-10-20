@@ -22,15 +22,6 @@ duplicated in every repo. It provides:
   [Repo File Sync workflow](.github/workflows/FileSyncer.yml), based on the mapping in
   [.sync/Files.yml](.sync/Files.yml).
 
-## PR Build Size
-
-- [PatinaPrBuildSize.yml](.github/workflows/PatinaPrBuildSize.yml) builds the caller's `base-sha` and `head-sha`
-  with one QEMU integration revision, recording DEBUG and RELEASE EFI sizes for Q35 and ArmVirt.
-- [PatinaPrBuildSizePost.yml](.github/workflows/PatinaPrBuildSizePost.yml) validates the originating CI run and
-  measurements, then creates or updates the caller PR's size comparison comment.
-
-The event callers and CI/PR discovery live in the Patina repository.
-
 ## Release Process Across Patina Repositories
 
 This section details the process for publishing releases from each Patina repository that does so, including

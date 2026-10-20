@@ -77,6 +77,7 @@ jobs:
 
           write('pr_number', data.get('pr_number', ''))
           write('mode', data.get('mode', 'patina'))
+          write('size_enabled', str(data.get('size_comparison', {}).get('enabled', False)).lower())
           write('head_sha', data.get('head_sha', ''))
           readiness = data.get('readiness', {})
           write('assets_complete', readiness.get('assets_complete', 'true'))
@@ -133,7 +134,167 @@ jobs:
                   f.write('DEPS_SECTION=\n')
           PY
 
-      - name: Comment on Firmware Assets Not Ready
+      - name: Download Baseline EFI Binaries
+        id: download-efi-base
+        continue-on-error: true
+        if: steps.metadata.outputs.size_enabled == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: patina-qemu-efi-base
+          path: binaries/patina-qemu-efi-base
+          github-token: ${{ steps.app-token.outputs.token }}
+          run-id: ${{ inputs.triggering-run-id }}
+          repository: ${{ github.repository }}
+
+      - name: Download PR Q35 EFI Binaries
+        id: download-efi-q35
+        continue-on-error: true
+        if: steps.metadata.outputs.size_enabled == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: patina-qemu-efi-pr-Q35
+          path: binaries/patina-qemu-efi-pr-Q35
+          github-token: ${{ steps.app-token.outputs.token }}
+          run-id: ${{ inputs.triggering-run-id }}
+          repository: ${{ github.repository }}
+
+      - name: Download PR ArmVirt EFI Binaries
+        id: download-efi-armvirt
+        continue-on-error: true
+        if: steps.metadata.outputs.size_enabled == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: patina-qemu-efi-pr-ArmVirt
+          path: binaries/patina-qemu-efi-pr-ArmVirt
+          github-token: ${{ steps.app-token.outputs.token }}
+          run-id: ${{ inputs.triggering-run-id }}
+          repository: ${{ github.repository }}
+
+      - name: Compare EFI Sizes
+        id: size-comparison
+        continue-on-error: true
+        if: steps.metadata.outputs.size_enabled == 'true'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          TRIGGERING_RUN_ID: ${{ inputs.triggering-run-id }}
+          EFI_DOWNLOAD_OUTCOME: ${{ steps.download-efi-base.outcome == 'success' && steps.download-efi-q35.outcome == 'success' && steps.download-efi-armvirt.outcome == 'success' && 'success' || 'failure' }}
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const metadata = JSON.parse(fs.readFileSync('metadata/pr-metadata.json', 'utf8'));
+            const comparison = metadata.size_comparison;
+            const mode = metadata.mode || 'patina';
+            const sha = /^[a-f0-9]{40}$/;
+            if (!['patina', 'dxe-core-qemu'].includes(mode) ||
+                ![comparison.base_sha, comparison.source_sha, comparison.integration_sha].every(value => value === '' || sha.test(value)) ||
+                (comparison.baseline_status === 'success' && !sha.test(comparison.base_sha)) ||
+                (mode === 'dxe-core-qemu' && comparison.integration_sha !== comparison.source_sha)) {
+              throw new Error('Invalid size-comparison commit snapshots.');
+            }
+            if (mode === 'patina' && comparison.integration_sha === '') {
+              core.warning('QEMU integration commit could not be resolved; size comparison is unavailable.');
+              core.exportVariable('BUILD_SIZE_SECTION',
+                '### Binary Size Report\n\nUnavailable: the QEMU integration commit could not be resolved.');
+              return;
+            }
+            const warnings = new Set();
+            function unavailable(reason) {
+              warnings.add(reason);
+              core.warning(reason);
+              return null;
+            }
+            if (process.env.EFI_DOWNLOAD_OUTCOME === 'failure') {
+              unavailable('EFI artifact download failed; see the post-processing workflow logs.');
+            }
+            function artifact(name, sourceSha) {
+              const directory = path.join('binaries', name);
+              const manifestPath = path.join(directory, 'build-metadata.json');
+              const stat = fs.lstatSync(manifestPath, { throwIfNoEntry: false });
+              if (!stat) return unavailable(`Missing build metadata for ${name}.`);
+              if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 8192) {
+                throw new Error(`Invalid build metadata file for ${name}.`);
+              }
+              const build = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+              const patinaSha = mode === 'patina' ? sourceSha : '';
+              const integrationSha = mode === 'patina' ? comparison.integration_sha : sourceSha;
+              if (build.run_id !== Number(process.env.TRIGGERING_RUN_ID) ||
+                  !Number.isSafeInteger(build.run_attempt) || build.run_attempt <= 0 ||
+                  build.run_attempt > metadata.run_attempt ||
+                  build.patina_sha !== patinaSha || build.integration_sha !== integrationSha) {
+                return unavailable(`Build metadata does not match the frozen snapshots for ${name}.`);
+              }
+              return directory;
+            }
+            function bytes(directory, relativePath) {
+              if (!directory) return null;
+              const stat = fs.lstatSync(path.join(directory, relativePath), { throwIfNoEntry: false });
+              if (!stat) return unavailable(`Missing EFI binary: ${relativePath}.`);
+              if (!stat.isFile() || stat.isSymbolicLink() || !Number.isSafeInteger(stat.size) || stat.size <= 0) {
+                return unavailable(`Invalid or empty EFI binary: ${relativePath}.`);
+              }
+              return stat.size;
+            }
+            const baseline = comparison.baseline_status === 'success'
+              ? artifact('patina-qemu-efi-base', comparison.base_sha)
+              : unavailable(`Target-branch build is ${comparison.baseline_status}; baseline sizes are unavailable.`);
+            const rows = [];
+            const commit = (repository, value) => value
+              ? `[\`${value.slice(0, 7)}\`](https://github.com/${repository}/commit/${value})`
+              : 'unavailable';
+            const repository = `${context.repo.owner}/${context.repo.repo}`;
+            const commits = `Base:${commit(repository, comparison.base_sha)}<br>` +
+              `PR:${commit(repository, comparison.source_sha)}<br>&nbsp;`;
+            function prettySize(value) {
+              if (value === null) return 'N/A';
+              const magnitude = Math.abs(value);
+              const [divisor, unit] = magnitude < 1024 ? [1, 'B'] :
+                magnitude < 1024 * 1024 ? [1024, 'KB'] : [1024 * 1024, 'MB'];
+              return `${(value / divisor).toFixed(2)} ${unit}`;
+            }
+            for (const [platform, architecture, target, binary] of [
+              ['Q35', 'x86_64', 'x86_64-unknown-uefi', 'qemu_q35_dxe_core.efi'],
+              ['ArmVirt', 'aarch64', 'aarch64-unknown-uefi', 'qemu_armvirt_dxe_core.efi'],
+            ]) {
+              const pr = artifact(`patina-qemu-efi-pr-${platform}`, comparison.source_sha);
+              const columns = [];
+              for (const profile of ['debug', 'release']) {
+                const relative = path.join(target, profile, binary);
+                const baseBytes = bytes(baseline, relative);
+                const prBytes = bytes(pr, relative);
+                let delta = 'N/A';
+                if (baseBytes !== null && prBytes !== null) {
+                  const difference = prBytes - baseBytes;
+                  delta = `${difference > 0 ? '+' : ''}${prettySize(difference)}`;
+                }
+                columns.push(`\`${prettySize(baseBytes).padStart(11)}\`<br>` +
+                  `\`${prettySize(prBytes).padStart(11)}\`<br>**\`\u0394 ${delta.padStart(9)}\`**`);
+              }
+              rows.push(`| ${platform} (${architecture}) | ${commits} | ${columns.join(' | ')} |`);
+            }
+            core.exportVariable('BUILD_SIZE_SECTION', [
+              '### Binary Size Report',
+              '',
+              '| Platform | Commit | \u0394 Debug Size | \u0394 Release Size |',
+              '|:---------|:-------|:---------------|:-----------------|',
+              ...rows,
+              ...(mode === 'patina' ? [
+                '',
+                `Shared QEMU integration: ${commit('OpenDevicePartnership/patina-dxe-core-qemu', comparison.integration_sha)}.`,
+              ] : []),
+              ...[...warnings].map(warning => `\n> ${warning}`),
+            ].join('\n'));
+
+      - name: Report Size Comparison Error
+        if: steps.size-comparison.outcome == 'failure'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            core.warning('Size comparison failed. QEMU validation results will still be reported.');
+            core.exportVariable('BUILD_SIZE_SECTION',
+              '### Binary Size Report\n\nUnavailable: size comparison failed. See the post-processing workflow logs.');
+
+      - name: Generate Firmware Assets Not Ready Comment
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete == 'false'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
@@ -144,19 +305,8 @@ jobs:
             const workflowUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/${'${{ github.workflow_ref }}'.split('@')[0].split('/').pop()}`;
             const marker = `*This comment was automatically generated by the [${workflowName}](${workflowUrl}) workflow.*`;
             const depsSection = (process.env.DEPS_SECTION || '').trim();
-            const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
             const runId = Number('${{ inputs.triggering-run-id }}');
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
-
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number,
-            });
-
-            const existingComment = comments.data.find((comment) =>
-              comment.body.includes(hiddenMarker)
-            );
 
             const body = [
               hiddenMarker,
@@ -172,26 +322,13 @@ jobs:
               '',
               '> **Note:** Previous results are available in this comment\'s edit history.',
               '',
+              ...(process.env.BUILD_SIZE_SECTION ? ['', process.env.BUILD_SIZE_SECTION, ''] : []),
               marker,
             ].join('\n');
 
-            if (existingComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number,
-                body,
-              });
-            }
+            require('fs').writeFileSync('qemu-comment.md', body, 'utf8');
 
-      - name: Comment on Readiness Mismatch
+      - name: Generate Readiness Mismatch Comment
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.readiness_mismatch == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
@@ -202,19 +339,8 @@ jobs:
             const workflowUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/${'${{ github.workflow_ref }}'.split('@')[0].split('/').pop()}`;
             const marker = `*This comment was automatically generated by the [${workflowName}](${workflowUrl}) workflow.*`;
             const depsSection = (process.env.DEPS_SECTION || '').trim();
-            const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
             const runId = Number('${{ inputs.triggering-run-id }}');
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
-
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number,
-            });
-
-            const existingComment = comments.data.find((comment) =>
-              comment.body.includes(hiddenMarker)
-            );
 
             const mode = '${{ steps.metadata.outputs.mode }}';
             let mismatchDescription;
@@ -247,24 +373,11 @@ jobs:
               '',
               '> **Note:** Previous results are available in this comment\'s edit history.',
               '',
+              ...(process.env.BUILD_SIZE_SECTION ? ['', process.env.BUILD_SIZE_SECTION, ''] : []),
               marker,
             ].join('\n');
 
-            if (existingComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number,
-                body,
-              });
-            }
+            require('fs').writeFileSync('qemu-comment.md', body, 'utf8');
 
       - name: Download QEMU Logs from Triggering Run
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
@@ -285,14 +398,13 @@ jobs:
           logs-dir: logs
           output-json: error-map.json
 
-      - name: Comment on QEMU Validation Failure
+      - name: Generate QEMU Validation Failure Comment
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
             const fs = require('fs');
-            const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
             const hiddenMarker = '<!-- patina-qemu-validation-result -->';
             const workflowName = '${{ github.workflow }}';
             const workflowUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/${'${{ github.workflow_ref }}'.split('@')[0].split('/').pop()}`;
@@ -300,16 +412,6 @@ jobs:
             const depsSection = (process.env.DEPS_SECTION || '').trim();
             const runId = Number('${{ inputs.triggering-run-id }}');
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
-
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number,
-            });
-
-            const existingComment = comments.data.find((comment) =>
-              comment.body.includes(hiddenMarker)
-            );
 
             // Load per-artifact error snippets produced by the extraction step.
             let errorMap = {};
@@ -484,24 +586,11 @@ jobs:
               errorSection,
               ...(depsSection ? ['', depsSection] : []),
               '',
+              ...(process.env.BUILD_SIZE_SECTION ? ['', process.env.BUILD_SIZE_SECTION, ''] : []),
               marker,
             ].join('\n');
 
-            if (existingComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number,
-                body,
-              });
-            }
+            require('fs').writeFileSync('qemu-comment.md', body, 'utf8');
 
       - name: Download QEMU Logs for Timing
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
@@ -554,13 +643,12 @@ jobs:
               f.write(f"timing={timing_json}\n")
           PY
 
-      - name: Comment on QEMU Validation Success
+      - name: Generate QEMU Validation Success Comment
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
             const hiddenMarker = '<!-- patina-qemu-validation-result -->';
             const workflowName = '${{ github.workflow }}';
             const workflowUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/${'${{ github.workflow_ref }}'.split('@')[0].split('/').pop()}`;
@@ -568,16 +656,6 @@ jobs:
             const depsSection = (process.env.DEPS_SECTION || '').trim();
             const runId = Number('${{ inputs.triggering-run-id }}');
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
-
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number,
-            });
-
-            const existingComment = comments.data.find((comment) =>
-              comment.body.includes(hiddenMarker)
-            );
 
             // Parse timing data produced by the previous step.
             let timingEntries = [];
@@ -614,32 +692,18 @@ jobs:
               `**Workflow run:** ${runUrl}`,
               timingSection,
               ...(depsSection ? ['', depsSection, ''] : []),
+              ...(process.env.BUILD_SIZE_SECTION ? ['', process.env.BUILD_SIZE_SECTION, ''] : []),
               marker,
             ].join('\n');
 
-            if (existingComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number,
-                body,
-              });
-            }
+            require('fs').writeFileSync('qemu-comment.md', body, 'utf8');
 
-      - name: Comment on PR Skipped
+      - name: Generate PR Skipped Comment
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped == 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           script: |
-            const issue_number = Number('${{ steps.metadata.outputs.pr_number }}');
             const hiddenMarker = '<!-- patina-qemu-validation-result -->';
             const workflowName = '${{ github.workflow }}';
             const workflowUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/workflows/${'${{ github.workflow_ref }}'.split('@')[0].split('/').pop()}`;
@@ -647,16 +711,6 @@ jobs:
             const runId = Number('${{ inputs.triggering-run-id }}');
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${runId}`;
             const skipReason = '${{ steps.metadata.outputs.skip_reason }}';
-
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number,
-            });
-
-            const existingComment = comments.data.find((comment) =>
-              comment.body.includes(hiddenMarker)
-            );
 
             let title;
             let message;
@@ -685,27 +739,68 @@ jobs:
               '',
               '> **Note:** Previous results are available in this comment\'s edit history.',
               '',
+              ...(process.env.BUILD_SIZE_SECTION ? ['', process.env.BUILD_SIZE_SECTION, ''] : []),
               marker,
             ].join('\n');
 
-            if (existingComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body,
-              });
+            require('fs').writeFileSync('qemu-comment.md', body, 'utf8');
+
+      - name: Publish QEMU Validation Comment
+        id: publish
+        if: steps.download-metadata.outcome == 'success'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          TRIGGERING_RUN_ID: ${{ inputs.triggering-run-id }}
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const fs = require('fs');
+            const metadata = JSON.parse(fs.readFileSync('metadata/pr-metadata.json', 'utf8'));
+            const issue_number = metadata.pr_number;
+            const runId = Number(process.env.TRIGGERING_RUN_ID);
+            if (!Number.isSafeInteger(issue_number) || issue_number <= 0) {
+              throw new Error('Invalid PR number in QEMU metadata.');
+            }
+            const { data: run } = await github.rest.actions.getWorkflowRun({
+              ...context.repo, run_id: runId,
+            });
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: issue_number });
+            const targetRef = metadata.size_comparison?.base_ref;
+            if (run.status !== 'completed' ||
+                (metadata.run_id !== undefined && metadata.run_id !== runId) ||
+                (metadata.run_attempt !== undefined && metadata.run_attempt !== run.run_attempt) ||
+                (metadata.head_sha && metadata.head_sha !== pr.head.sha) ||
+                (metadata.size_comparison?.enabled && metadata.size_comparison.source_sha &&
+                  metadata.size_comparison.source_sha !== pr.head.sha) ||
+                (!metadata.skipped && pr.state !== 'open') ||
+                (targetRef && targetRef !== pr.base.ref)) {
+              core.notice('Ignoring obsolete QEMU validation results.');
+              core.setOutput('obsolete', 'true');
+              return;
+            }
+            const hiddenMarker = '<!-- patina-qemu-validation-result -->';
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(comment =>
+              comment.user?.type === 'Bot' && comment.body?.includes(hiddenMarker));
+            const previous = existing?.body.match(/<!-- patina-qemu-run: (\d+):(\d+) -->/);
+            if (previous && (Number(previous[1]) > runId ||
+                (Number(previous[1]) === runId && Number(previous[2]) > run.run_attempt))) {
+              core.notice('A newer QEMU validation result is already published.');
+              core.setOutput('obsolete', 'true');
+              return;
+            }
+            const body = fs.readFileSync('qemu-comment.md', 'utf8') +
+              `\n<!-- patina-qemu-run: ${runId}:${run.run_attempt} -->`;
+            if (existing) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: existing.id, body });
             } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number,
-                body,
-              });
+              await github.rest.issues.createComment({ ...context.repo, issue_number, body });
             }
 
       - name: Set Final Commit Status
-        if: always()
+        if: always() && steps.publish.outputs.obsolete != 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           github-token: ${{ steps.app-token.outputs.token }}
