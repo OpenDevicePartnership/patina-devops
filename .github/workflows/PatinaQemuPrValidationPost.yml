@@ -137,7 +137,7 @@ jobs:
       - name: Download Baseline EFI Binaries
         id: download-efi-base
         continue-on-error: true
-        if: steps.metadata.outputs.size_enabled == 'true'
+        if: steps.metadata.outputs.size_enabled == 'true' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: patina-qemu-efi-base
@@ -149,7 +149,7 @@ jobs:
       - name: Download PR Q35 EFI Binaries
         id: download-efi-q35
         continue-on-error: true
-        if: steps.metadata.outputs.size_enabled == 'true'
+        if: steps.metadata.outputs.size_enabled == 'true' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: patina-qemu-efi-pr-Q35
@@ -161,7 +161,7 @@ jobs:
       - name: Download PR ArmVirt EFI Binaries
         id: download-efi-armvirt
         continue-on-error: true
-        if: steps.metadata.outputs.size_enabled == 'true'
+        if: steps.metadata.outputs.size_enabled == 'true' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: patina-qemu-efi-pr-ArmVirt
@@ -173,7 +173,7 @@ jobs:
       - name: Compare EFI Sizes
         id: size-comparison
         continue-on-error: true
-        if: steps.metadata.outputs.size_enabled == 'true'
+        if: steps.metadata.outputs.size_enabled == 'true' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           TRIGGERING_RUN_ID: ${{ inputs.triggering-run-id }}
