@@ -529,9 +529,9 @@ jobs:
               version = local["workspace"]["package"]["version"]
               dependency = integration["dependencies"]["patina"]
               requirement = dependency["version"] if isinstance(dependency, dict) else dependency
-              match = re.fullmatch(r"\^?(\d+)(?:\.\d+){0,2}", requirement)
+              match = re.search(r"(\d+)", requirement)
               if match is None:
-                  raise SystemExit(f"Unsupported integration version requirement: {requirement}")
+                  raise SystemExit(f"Unable to parse patina dependency major version from: {requirement}")
               compatible = int(version.split(".")[0]) == int(match[1])
               if not compatible:
                   print(f"::warning::Baseline Patina {version} does not match integration requirement {requirement}.")
