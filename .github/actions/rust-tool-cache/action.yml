@@ -1,8 +1,7 @@
 # @file action.yml
 #
-# An action that loads rust tools and toolchains from cache. If there is a miss, it will install
-# them. the tools are read from the tools section of the rust-toolchain.toml file at the root
-# of the repository.
+# An action that caches Rust tools and toolchains. The supplied toolchain file determines
+# the cache identity, installation directory, and tools to install.
 #
 ##
 # Copyright (c) Microsoft Corporation.
@@ -13,13 +12,39 @@ description: "This action loads rust tools and toolchains from cache, or install
 
 inputs:
   rust-toolchain-file:
-    description: 'The path to the rust-toolchain.toml file. Default: `rust-toolchain.toml`'
+    description: >-
+      Path to rust-toolchain.toml, absolute or relative to the workspace.
+      Its contents determine the cache key. Toolchain and Cargo tool installation
+      run from its parent directory. Default: `rust-toolchain.toml`.
     required: false
     default: 'rust-toolchain.toml'
 
 runs:
   using: composite
   steps:
+    - name: Resolve Rust Toolchain File
+      id: toolchain
+      shell: bash
+      env:
+        TOOLCHAIN_FILE: ${{ inputs.rust-toolchain-file }}
+      run: |
+        set -euo pipefail
+        FILE="${TOOLCHAIN_FILE//\\//}"
+        if [ ! -f "$FILE" ]; then
+          echo "::error::File $FILE not found."
+          exit 1
+        fi
+        DIRECTORY=$(cd "$(dirname "$FILE")" && pwd)
+        if [ "$RUNNER_OS" = "Windows" ]; then
+          DIRECTORY=$(cygpath -m "$DIRECTORY")
+        fi
+        HASH=$(sha256sum "$FILE" | cut -d ' ' -f1)
+        {
+          echo "directory=$DIRECTORY"
+          echo "file=$DIRECTORY/$(basename "$FILE")"
+          echo "hash=$HASH"
+        } >> "$GITHUB_OUTPUT"
+
     - name: Rust Tool Cache
       id: tool-cache
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -27,7 +52,7 @@ runs:
         path: |
           ~/.cargo/bin/
           ~/.rustup/toolchains/
-        key: ${{ runner.os }}-${{ runner.arch }}-rust-tools-${{ hashFiles(inputs.rust-toolchain-file) }}
+        key: ${{ runner.os }}-${{ runner.arch }}-rust-tools-${{ steps.toolchain.outputs.hash }}
 
     # Installs the toolchain specified in the rust-toolchain.toml file if rustup >= 1.28.0
     #
@@ -37,13 +62,14 @@ runs:
     # need to specify the toolchain name.
     - name: Install toolchains
       shell: bash
+      working-directory: ${{ steps.toolchain.outputs.directory }}
       run: |
         rustup toolchain install
-      if: steps.tool-cache.outputs.cache-hit != 'true'
       continue-on-error: true
 
     - name: Install cargo-binstall
       shell: bash
+      working-directory: ${{ steps.toolchain.outputs.directory }}
       run: |
         curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
       if: steps.tool-cache.outputs.cache-hit != 'true'
@@ -51,8 +77,11 @@ runs:
     # Read any tools from rust-toolchain.toml file and installs them
     - name: Install Rust Tools
       shell: bash
+      working-directory: ${{ steps.toolchain.outputs.directory }}
+      env:
+        TOOLCHAIN_FILE: ${{ steps.toolchain.outputs.file }}
       run: |
-        FILE="${{ inputs.rust-toolchain-file }}"
+        FILE="$TOOLCHAIN_FILE"
 
         if [ ! -f "$FILE" ]; then
           echo "::error::File $FILE not found."
@@ -92,7 +121,6 @@ runs:
           echo ""
 
           # Attempt to binstall the tool first. If it fails, install it using cargo
-          cargo binstall -y $TOOL_NAME --version $TOOL_VERSION || cargo install $TOOL_NAME --version $TOOL_VERSION --locked
+          cargo binstall -y $TOOL_NAME --version $TOOL_VERSION --force || cargo install $TOOL_NAME --version $TOOL_VERSION --locked --force
         done
       if: steps.tool-cache.outputs.cache-hit != 'true'
-

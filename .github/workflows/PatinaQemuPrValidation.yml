@@ -510,7 +510,7 @@ jobs:
         with:
           python-version: ${{ needs.vars.outputs['python-version'] }}
 
-      - name: Check Baseline Compatibility and Toolchain
+      - name: Check Baseline Compatibility
         id: compatibility
         shell: python
         env:
@@ -535,20 +535,8 @@ jobs:
               compatible = int(version.split(".")[0]) == int(match[1])
               if not compatible:
                   print(f"::warning::Baseline Patina {version} does not match integration requirement {requirement}.")
-          toolchain = tomllib.loads((integration_root / "rust-toolchain.toml").read_text(encoding="utf-8"))
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as environment:
-              environment.write(f'RUSTUP_TOOLCHAIN={toolchain["toolchain"]["channel"]}\n')
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
               output.write(f"compatible={str(compatible).lower()}\n")
-
-      - name: Download Baseline Rust Tools
-        if: steps.compatibility.outputs.compatible == 'true'
-        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
-
-      - name: Install Baseline UEFI Targets
-        if: steps.compatibility.outputs.compatible == 'true'
-        shell: bash
-        run: rustup target add x86_64-unknown-uefi aarch64-unknown-uefi
 
       - name: Build Baseline DEBUG and RELEASE Q35 and ArmVirt
         id: build
@@ -686,9 +674,6 @@ jobs:
         with:
           python-version: ${{ needs.vars.outputs['python-version'] }}
 
-      - name: Download Rust Tools
-        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
-
       - name: Check Cache for patina-qemu FW Binary
         id: firmware-cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -789,9 +774,6 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ needs.vars.outputs['python-version'] }}
-
-      - name: Download Rust Tools
-        uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
 
       - name: Check Cache for patina-qemu FW Binaries
         id: firmware-cache

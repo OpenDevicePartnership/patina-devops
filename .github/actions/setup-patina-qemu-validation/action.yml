@@ -4,8 +4,9 @@ description: >-
   Clone dependency repos into caller-specified directories, build
   patina-dxe-core-qemu with a crate patch, and sparse-checkout the
   patina-qemu run script.  Every path is supplied by the caller — this
-  action never assumes where anything lives. Requires Python 3.11 or
-  newer on PATH.
+  action never assumes where anything lives. Rust tooling is installed
+  from the integration repository's rust-toolchain.toml before building.
+  Requires Python 3.11 or newer on PATH.
 
 inputs:
   patina-repo:
@@ -66,6 +67,11 @@ runs:
           fi
         fi
 
+    - name: Install QEMU Rust Tools
+      uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+      with:
+        rust-toolchain-file: ${{ inputs.dxe-core-qemu-repo }}/rust-toolchain.toml
+
     - name: Clone patina-fw-patcher
       if: inputs.fw-patcher-repo != ''
       shell: bash
@@ -120,8 +126,6 @@ runs:
         }
 
         cd "${{ inputs.dxe-core-qemu-repo }}"
-
-        run_cmd rustup component add rust-src
 
         # When a patina repo path is provided, apply a crate patch so that
         # the build uses the local (potentially unreleased) patina source.
