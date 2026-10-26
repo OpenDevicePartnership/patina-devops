@@ -4,7 +4,9 @@ description: >-
   Clone dependency repos into caller-specified directories, build
   patina-dxe-core-qemu with a crate patch, and sparse-checkout the
   patina-qemu run script.  Every path is supplied by the caller — this
-  action never assumes where anything lives.
+  action never assumes where anything lives. Rust tooling is installed
+  from the integration repository's rust-toolchain.toml before building.
+  Requires Python 3.11 or newer on PATH.
 
 inputs:
   patina-repo:
@@ -28,11 +30,17 @@ inputs:
     description: Absolute path where patina-dxe-core-qemu should be cloned.
     required: true
   fw-patcher-repo:
-    description: Absolute path where patina-fw-patcher should be cloned.
-    required: true
+    description: >-
+      Absolute path where patina-fw-patcher should be cloned.
+      When empty, the firmware patcher checkout is skipped.
+    required: false
+    default: ''
   patina-qemu-repo:
-    description: Absolute path where patina-qemu should be sparse-cloned.
-    required: true
+    description: >-
+      Absolute path where patina-qemu should be sparse-cloned.
+      When empty, the QEMU runner checkout is skipped.
+    required: false
+    default: ''
   log-file:
     description: >-
       Absolute path to a log file. When set, build output is teed to this
@@ -59,7 +67,13 @@ runs:
           fi
         fi
 
+    - name: Install QEMU Rust Tools
+      uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
+      with:
+        rust-toolchain-file: ${{ inputs.dxe-core-qemu-repo }}/rust-toolchain.toml
+
     - name: Clone patina-fw-patcher
+      if: inputs.fw-patcher-repo != ''
       shell: bash
       run: |
         set -euo pipefail
@@ -70,6 +84,7 @@ runs:
         chmod +x "${{ inputs.fw-patcher-repo }}/Executables/"*
 
     - name: Sparse-checkout patina-qemu build script
+      if: inputs.patina-qemu-repo != ''
       shell: bash
       run: |
         set -euo pipefail
@@ -112,8 +127,6 @@ runs:
 
         cd "${{ inputs.dxe-core-qemu-repo }}"
 
-        run_cmd rustup component add rust-src
-
         # When a patina repo path is provided, apply a crate patch so that
         # the build uses the local (potentially unreleased) patina source.
         # Otherwise, dependencies resolve from the registry as-is.
@@ -127,3 +140,42 @@ runs:
         run_cmd cargo make q35-release -- --exclude-features exit_on_patina_test_failure
         run_cmd cargo make armvirt -- --exclude-features exit_on_patina_test_failure
         run_cmd cargo make armvirt-release -- --exclude-features exit_on_patina_test_failure
+
+    - name: Verify Build Sources and Record Metadata
+      shell: python
+      env:
+        DXE_CORE_QEMU_REPO: ${{ inputs.dxe-core-qemu-repo }}
+        PATINA_REPO: ${{ inputs.patina-repo }}
+      run: |
+        import json
+        import os
+        import pathlib
+        import subprocess
+        import tomllib
+
+        root = pathlib.Path(os.environ["DXE_CORE_QEMU_REPO"])
+        patina_repo = os.environ["PATINA_REPO"]
+        if patina_repo:
+            manifest = tomllib.loads((root / "Cargo.toml").read_text(encoding="utf-8"))
+            patches = manifest["patch"]["crates-io"]
+            for name in ("patina", "patina_dxe_core"):
+                if "path" not in patches[name]:
+                    raise SystemExit(f"Missing local crate patch for {name}")
+            lock = tomllib.loads((root / "Cargo.lock").read_text(encoding="utf-8"))
+            unpatched = [package["name"] for package in lock["package"]
+                         if package["name"] in patches and "source" in package]
+            if unpatched:
+                raise SystemExit(f"Workspace crates resolved from a registry instead of local patches: {unpatched}")
+        def commit(directory):
+            return subprocess.check_output(
+                ["git", "-C", directory, "-c", f"safe.directory={pathlib.Path(directory).resolve().as_posix()}",
+                 "rev-parse", "HEAD"], text=True,
+            ).strip()
+
+        metadata = {
+            "run_id": int(os.environ["GITHUB_RUN_ID"]),
+            "run_attempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+            "patina_sha": commit(patina_repo) if patina_repo else "",
+            "integration_sha": commit(str(root)),
+        }
+        (root / "target" / "build-metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
