@@ -182,6 +182,7 @@ jobs:
           script: |
             const fs = require('fs');
             const path = require('path');
+            const { execFileSync } = require('child_process');
             const metadata = JSON.parse(fs.readFileSync('metadata/pr-metadata.json', 'utf8'));
             const comparison = metadata.size_comparison;
             const mode = metadata.mode || 'patina';
@@ -226,14 +227,22 @@ jobs:
               }
               return directory;
             }
-            function bytes(directory, relativePath) {
-              if (!directory) return null;
-              const stat = fs.lstatSync(path.join(directory, relativePath), { throwIfNoEntry: false });
-              if (!stat) return unavailable(`Missing EFI binary: ${relativePath}.`);
-              if (!stat.isFile() || stat.isSymbolicLink() || !Number.isSafeInteger(stat.size) || stat.size <= 0) {
-                return unavailable(`Invalid or empty EFI binary: ${relativePath}.`);
+            function sizes(directory, relativePath) {
+              if (!directory) return [null, null];
+              const binaryPath = path.join(directory, relativePath);
+              const stat = fs.lstatSync(binaryPath, { throwIfNoEntry: false });
+              if (!stat) {
+                unavailable(`Missing EFI binary: ${relativePath}.`);
+                return [null, null];
               }
-              return stat.size;
+              if (!stat.isFile() || stat.isSymbolicLink() || !Number.isSafeInteger(stat.size) || stat.size <= 0) {
+                unavailable(`Invalid or empty EFI binary: ${relativePath}.`);
+                return [null, null];
+              }
+              const compressed = execFileSync('xz', ['--format=lzma', '-6', '--stdout', '--', binaryPath], {
+                maxBuffer: Math.max(1024 * 1024, stat.size * 2),
+              });
+              return [stat.size, compressed.length];
             }
             const baseline = comparison.baseline_status === 'success'
               ? artifact('patina-qemu-efi-base', comparison.base_sha)
@@ -250,7 +259,16 @@ jobs:
               const magnitude = Math.abs(value);
               const [divisor, unit] = magnitude < 1024 ? [1, 'B'] :
                 magnitude < 1024 * 1024 ? [1024, 'KB'] : [1024 * 1024, 'MB'];
-              return `${(value / divisor).toFixed(2)} ${unit}`;
+              return `${(value / divisor).toFixed(2)}\u00a0${unit}`;
+            }
+            function sizeColumn(baseBytes, prBytes) {
+              let delta = 'N/A';
+              if (baseBytes !== null && prBytes !== null) {
+                const difference = prBytes - baseBytes;
+                delta = `${difference > 0 ? '+' : ''}${prettySize(difference)}`;
+              }
+              return `\`${prettySize(baseBytes)}\`<br>` +
+                `\`${prettySize(prBytes)}\`<br>**\`\u0394\u00a0${delta}\`**`;
             }
             for (const [platform, architecture, target, binary] of [
               ['Q35', 'x86_64', 'x86_64-unknown-uefi', 'qemu_q35_dxe_core.efi'],
@@ -258,26 +276,24 @@ jobs:
             ]) {
               const pr = artifact(`patina-qemu-efi-pr-${platform}`, comparison.source_sha);
               const columns = [];
+              const compressedColumns = [];
               for (const profile of ['debug', 'release']) {
                 const relative = path.join(target, profile, binary);
-                const baseBytes = bytes(baseline, relative);
-                const prBytes = bytes(pr, relative);
-                let delta = 'N/A';
-                if (baseBytes !== null && prBytes !== null) {
-                  const difference = prBytes - baseBytes;
-                  delta = `${difference > 0 ? '+' : ''}${prettySize(difference)}`;
-                }
-                columns.push(`\`${prettySize(baseBytes).padStart(11)}\`<br>` +
-                  `\`${prettySize(prBytes).padStart(11)}\`<br>**\`\u0394 ${delta.padStart(9)}\`**`);
+                const [baseBytes, baseCompressedBytes] = sizes(baseline, relative);
+                const [prBytes, prCompressedBytes] = sizes(pr, relative);
+                columns.push(sizeColumn(baseBytes, prBytes));
+                compressedColumns.push(sizeColumn(baseCompressedBytes, prCompressedBytes));
               }
-              rows.push(`| ${platform} (${architecture}) | ${commits} | ${columns.join(' | ')} |`);
+              rows.push(`| ${platform} (${architecture}) | ${commits} | ${[...columns, ...compressedColumns].join(' | ')} |`);
             }
             core.exportVariable('BUILD_SIZE_SECTION', [
               '### Binary Size Report',
               '',
-              '| Platform | Commit | \u0394 Debug Size | \u0394 Release Size |',
-              '|:---------|:-------|:---------------|:-----------------|',
+              '| Platform | Commit | \u0394 Debug | \u0394 Release | \u0394 Debug<br>(LZMA) | \u0394 Release<br>(LZMA) |',
+              '|:---------|:-------|:---------|:-----------|:--------------------|:----------------------|',
               ...rows,
+              '',
+              'Compressed sizes use LZMA-alone format at preset 6 (`xz --format=lzma -6`).',
               ...(mode === 'patina' ? [
                 '',
                 `Shared QEMU integration: ${commit('OpenDevicePartnership/patina-dxe-core-qemu', comparison.integration_sha)}.`,
