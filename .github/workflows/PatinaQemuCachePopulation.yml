@@ -1,0 +1,195 @@
+# A reusable workflow that populates the caches restored by Patina QEMU PR Validation.
+#
+# PR validation runs from a workflow_run trigger. That trigger type is restricted to read-only cache
+# access by GitHub. Because GitHub caches are not shared across repositories, this workflow must be
+# called from a trigger that can write to the default branch cache scope (schedule or workflow_dispatch)
+# in the same repository that runs PR validation.
+#
+# The cache keys and paths must match the restore steps in PatinaQemuPrValidation.yml for that workflow
+# to be able to restore the caches successfully during PR validation.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+##
+name: Populate Patina QEMU Caches
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  vars:
+    name: Get Constants
+    uses: OpenDevicePartnership/patina-devops/.github/workflows/qemu-constants.yml@main
+
+  release:
+    name: Resolve the patina-qemu Release
+    runs-on: ubuntu-latest
+    outputs:
+      assets_complete: ${{ steps.assets.outputs.assets_complete }}
+      armvirt_fw_url: ${{ steps.assets.outputs.armvirt_url }}
+      fw_release_tag: ${{ steps.assets.outputs.tag }}
+      q35_fw_url: ${{ steps.assets.outputs.q35_url }}
+    steps:
+      - name: Identify Latest patina-qemu FW Release Binaries
+        id: assets
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl -sfL -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/OpenDevicePartnership/patina-qemu/releases/latest" \
+            -o release.json
+          python - <<'PY'
+          import json
+          import os
+          import pathlib
+
+          with open('release.json', 'r', encoding='utf-8') as f:
+              release = json.loads(f.read())
+
+          tag = release['tag_name']
+          q35_name = f'patina-qemu-q35-{tag}.zip'
+          armvirt_name = f'patina-qemu-armvirt-{tag}.zip'
+          assets = {a['name']: a['browser_download_url'] for a in release.get('assets', [])}
+
+          output_file = pathlib.Path(os.environ['GITHUB_OUTPUT'])
+          with output_file.open('a', encoding='utf-8') as out:
+              out.write(f'tag={tag}\n')
+              if q35_name in assets and armvirt_name in assets:
+                  out.write('assets_complete=true\n')
+                  out.write(f'q35_url={assets[q35_name]}\n')
+                  out.write(f'armvirt_url={assets[armvirt_name]}\n')
+              else:
+                  missing = [n for n in (q35_name, armvirt_name) if n not in assets]
+                  print(f'::warning::Missing firmware assets in patina-qemu {tag} release: {", ".join(missing)}')
+                  print('Skipping cache population - firmware zip files may still be uploading')
+                  out.write('assets_complete=false\n')
+          PY
+
+  populate-linux:
+    name: Populate FW Cache - ${{ matrix.platform }} (Linux)
+    runs-on: ubuntu-latest
+    needs: [vars, release]
+    if: needs.release.outputs.assets_complete == 'true'
+    # Matches the PR validation job so the cache version (path and compression method) is identical.
+    container:
+      image: ${{ needs.vars.outputs['container-image'] }}
+      volumes:
+        - /home/runner/work/_actions:/home/runner/work/_actions
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Q35
+            fw_zip: q35.zip
+            fw_cache_key_suffix: q35
+            fw_url_output: q35_fw_url
+          - platform: ArmVirt
+            fw_zip: armvirt.zip
+            fw_cache_key_suffix: armvirt
+            fw_url_output: armvirt_fw_url
+    steps:
+      - name: Check for Existing Cache
+        id: firmware-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          lookup-only: true
+          path: .cache/patina-qemu/${{ matrix.fw_zip }}
+          key: patina-qemu-fw-${{ matrix.fw_cache_key_suffix }}-${{ runner.os }}-${{ needs.release.outputs.fw_release_tag }}
+
+      - name: Download the patina-qemu FW Binary
+        if: steps.firmware-cache.outputs.cache-hit != 'true'
+        shell: bash
+        env:
+          FW_URL: ${{ needs.release.outputs[matrix.fw_url_output] }}
+        run: |
+          mkdir -p .cache/patina-qemu
+          curl -fL "$FW_URL" -o .cache/patina-qemu/${{ matrix.fw_zip }}
+
+      - name: Save the patina-qemu FW Binary Cache
+        if: steps.firmware-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/patina-qemu/${{ matrix.fw_zip }}
+          key: patina-qemu-fw-${{ matrix.fw_cache_key_suffix }}-${{ runner.os }}-${{ needs.release.outputs.fw_release_tag }}
+
+  populate-windows:
+    name: Populate FW and QEMU Caches (Windows)
+    runs-on: windows-latest
+    needs: [release]
+    if: needs.release.outputs.assets_complete == 'true'
+    steps:
+      - name: Check for Existing FW Cache
+        id: firmware-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          lookup-only: true
+          path: |
+            .cache/patina-qemu/q35.zip
+            .cache/patina-qemu/armvirt.zip
+          key: patina-qemu-fw-${{ runner.os }}-${{ needs.release.outputs.fw_release_tag }}
+
+      - name: Download the patina-qemu FW Binaries
+        if: steps.firmware-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .cache\patina-qemu -Force | Out-Null
+          Invoke-WebRequest -Uri "${{ needs.release.outputs.q35_fw_url }}" -OutFile ".cache\patina-qemu\q35.zip"
+          Invoke-WebRequest -Uri "${{ needs.release.outputs.armvirt_fw_url }}" -OutFile ".cache\patina-qemu\armvirt.zip"
+
+      - name: Save the patina-qemu FW Binaries Cache
+        if: steps.firmware-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/patina-qemu/q35.zip
+            .cache/patina-qemu/armvirt.zip
+          key: patina-qemu-fw-${{ runner.os }}-${{ needs.release.outputs.fw_release_tag }}
+
+      - name: Download the QEMU ext_dep YAML
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN" }
+          New-Item -ItemType Directory -Path .cache\github-files -Force | Out-Null
+          Invoke-WebRequest `
+            -Uri "https://raw.githubusercontent.com/OpenDevicePartnership/patina-qemu/refs/heads/main/QemuPkg/Binaries/qemu-windows_ext_dep.yaml" `
+            -Headers $headers `
+            -OutFile ".cache\github-files\qemu-windows_ext_dep.yaml"
+
+      - name: Resolve the Windows QEMU Package
+        id: windows-qemu
+        shell: pwsh
+        run: |
+          $yamlPath = ".cache\github-files\qemu-windows_ext_dep.yaml"
+          $text = Get-Content -Path $yamlPath -Raw
+          $zipUrl = ([regex]::Match($text, 'https?://[^\s\"\'']+\.zip')).Value
+          if (-not $zipUrl) { throw "Unable to find QEMU zip URL in qemu-windows_ext_dep.yaml" }
+          "zip-url=$zipUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Check for Existing QEMU Package Cache
+        id: qemu-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          lookup-only: true
+          path: .cache/qemu/windows-qemu.zip
+          key: windows-qemu-${{ steps.windows-qemu.outputs.zip-url }}
+
+      - name: Download the Windows QEMU Package
+        if: steps.qemu-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path .cache\qemu -Force | Out-Null
+          Invoke-WebRequest -Uri "${{ steps.windows-qemu.outputs.zip-url }}" -OutFile ".cache\qemu\windows-qemu.zip"
+
+      - name: Save Windows QEMU Package Cache
+        if: steps.qemu-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .cache/qemu/windows-qemu.zip
+          key: windows-qemu-${{ steps.windows-qemu.outputs.zip-url }}

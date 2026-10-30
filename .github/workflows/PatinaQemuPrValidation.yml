@@ -180,57 +180,7 @@ jobs:
 
       # Note: Authorizing requests with the GitHub default token should work since these are pubic
       # repos. It should also reduce the likelihood of hitting the API rate limit.
-      - name: Resolve GitHub API Cache Keys
-        id: cache-keys
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          MODE: ${{ inputs.patina-ref != '' && 'patina' || 'dxe-core-qemu' }}
-        run: |
-          set -euo pipefail
-          AUTH_HEADER="Authorization: Bearer $GH_TOKEN"
-
-          patina_tag=$(curl -sfL -H "$AUTH_HEADER" \
-            "https://api.github.com/repos/OpenDevicePartnership/patina/releases/latest" \
-            | jq -r '.tag_name')
-          if [ -z "$patina_tag" ] || [ "$patina_tag" = "null" ]; then
-            echo "::error::Failed to retrieve patina latest release tag"
-            exit 1
-          fi
-          echo "patina latest release tag: $patina_tag"
-
-          qemu_tag=$(curl -sfL -H "$AUTH_HEADER" \
-            "https://api.github.com/repos/OpenDevicePartnership/patina-qemu/releases/latest" \
-            | jq -r '.tag_name')
-          if [ -z "$qemu_tag" ] || [ "$qemu_tag" = "null" ]; then
-            echo "::error::Failed to retrieve patina-qemu latest release tag"
-            exit 1
-          fi
-          echo "patina-qemu latest release tag: $qemu_tag"
-
-          if [ "$MODE" = "patina" ]; then
-            cargo_commit=$(curl -sfL -H "$AUTH_HEADER" \
-              "https://api.github.com/repos/OpenDevicePartnership/patina-dxe-core-qemu/commits?path=Cargo.toml&sha=main&per_page=1" \
-              | jq -r '.[0].sha')
-            if [ -z "$cargo_commit" ] || [ "$cargo_commit" = "null" ]; then
-              echo "::error::Failed to retrieve patina-dxe-core-qemu Cargo.toml latest commit hash"
-              exit 1
-            fi
-            echo "patina-dxe-core-qemu Cargo.toml latest commit: $cargo_commit"
-            echo "key=gh-files-preflight-patina-${patina_tag}-cargo-${cargo_commit}-qemu-${qemu_tag}" >> "$GITHUB_OUTPUT"
-          else
-            echo "key=gh-files-preflight-dxe-core-qemu-patina-${patina_tag}-qemu-${qemu_tag}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Restore GitHub API File Cache
-        id: gh-file-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .cache/github-files
-          key: ${{ steps.cache-keys.outputs.key }}
-
       - name: Download GitHub API Files
-        if: steps.gh-file-cache.outputs.cache-hit != 'true'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -279,17 +229,9 @@ jobs:
           else:
               missing = [n for n in (q35_name, armvirt_name) if n not in assets]
               print(f'::warning::Missing firmware assets in patina-qemu {tag} release: {", ".join(missing)}')
-              print('Cache will not be saved - firmware zip files may still be uploading')
               with output_file.open('a', encoding='utf-8') as out:
                   out.write('assets_complete=false\n')
           PY
-
-      - name: Save GitHub API File Cache
-        if: always() && steps.gh-file-cache.outputs.cache-hit != 'true' && steps.validate-qemu-assets.outputs.assets_complete == 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .cache/github-files
-          key: ${{ steps.cache-keys.outputs.key }}
 
       - name: Resolve Dependency Commit SHAs
         id: dep-shas
@@ -674,9 +616,10 @@ jobs:
         with:
           python-version: ${{ needs.vars.outputs['python-version'] }}
 
-      - name: Check Cache for patina-qemu FW Binary
+      # Caches are populated by PatinaQemuCachePopulation.yml. Keep the keys in sync with it.
+      - name: Restore patina-qemu FW Binary Cache
         id: firmware-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/patina-qemu/${{ matrix.fw_zip }}
           key: patina-qemu-fw-${{ matrix.fw_cache_key_suffix }}-${{ runner.os }}-${{ needs.preflight.outputs.fw_release_tag }}
@@ -775,9 +718,10 @@ jobs:
         with:
           python-version: ${{ needs.vars.outputs['python-version'] }}
 
-      - name: Check Cache for patina-qemu FW Binaries
+      # Caches are populated by PatinaQemuCachePopulation.yml. Keep the keys in sync with it.
+      - name: Restore patina-qemu FW Binaries Cache
         id: firmware-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             .cache/patina-qemu/q35.zip
@@ -809,33 +753,7 @@ jobs:
           patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
           patina-repo: ${{ env.PATINA_REPO }}
 
-      - name: Resolve QEMU ext_dep YAML Cache Key
-        id: qemu-yaml-key
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $headers = @{ Authorization = "Bearer $env:GH_TOKEN" }
-          $response = Invoke-RestMethod `
-            -Uri "https://api.github.com/repos/OpenDevicePartnership/patina-qemu/commits?path=QemuPkg/Binaries/qemu-windows_ext_dep.yaml&sha=main&per_page=1" `
-            -Headers $headers
-          $commitHash = $response[0].sha
-          if (-not $commitHash) {
-            Write-Error "::error::Failed to retrieve qemu-windows_ext_dep.yaml latest commit hash"
-            exit 1
-          }
-          Write-Host "qemu-windows_ext_dep.yaml latest commit: $commitHash"
-          "key=gh-files-qemu-yaml-$commitHash" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
-
-      - name: Restore QEMU ext_dep YAML Cache
-        id: qemu-yaml-cache
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .cache/github-files/qemu-windows_ext_dep.yaml
-          key: ${{ steps.qemu-yaml-key.outputs.key }}
-
       - name: Download QEMU ext_dep YAML
-        if: steps.qemu-yaml-cache.outputs.cache-hit != 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -847,13 +765,6 @@ jobs:
             -Headers $headers `
             -OutFile ".cache\github-files\qemu-windows_ext_dep.yaml"
 
-      - name: Save QEMU ext_dep YAML Cache
-        if: always() && steps.qemu-yaml-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .cache/github-files/qemu-windows_ext_dep.yaml
-          key: ${{ steps.qemu-yaml-key.outputs.key }}
-
       - name: Resolve Windows QEMU Package
         id: windows-qemu
         shell: pwsh
@@ -864,9 +775,9 @@ jobs:
           if (-not $zipUrl) { throw "Unable to find QEMU zip URL in qemu-windows_ext_dep.yaml" }
           "zip-url=$zipUrl" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
-      - name: Cache Windows QEMU Package
+      - name: Restore Windows QEMU Package Cache
         id: qemu-cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/qemu/windows-qemu.zip
           key: windows-qemu-${{ steps.windows-qemu.outputs.zip-url }}
