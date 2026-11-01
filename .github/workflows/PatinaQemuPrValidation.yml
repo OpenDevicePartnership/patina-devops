@@ -57,7 +57,7 @@ jobs:
     steps:
       - name: Generate GitHub App Token
         id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.PATINA_AUTOMATION_APPLICATION_ID }}
           private-key: ${{ secrets.PATINA_AUTOMATION_APPLICATION_PRIVATE_KEY }}
@@ -506,7 +506,7 @@ jobs:
           git -C "$DXE_CORE_QEMU_REPO" checkout --detach FETCH_HEAD
 
       - name: Setup Python (Baseline)
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ needs.vars.outputs['python-version'] }}
 
@@ -551,7 +551,7 @@ jobs:
       - name: Upload Baseline EFI Binaries
         id: efi-artifact
         if: steps.build.outcome == 'success'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: patina-qemu-efi-base
           path: |
@@ -566,7 +566,7 @@ jobs:
 
       - name: Upload Baseline Build Log
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qemu-baseline-build-log
           path: ${{ env.DEPS_DIR }}/baseline-build.log
@@ -670,7 +670,7 @@ jobs:
           mkdir -p "$LOG_DIR"
 
       - name: Setup Python (Linux)
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ needs.vars.outputs['python-version'] }}
 
@@ -708,7 +708,7 @@ jobs:
       - name: Upload PR EFI Binaries
         continue-on-error: true
         if: inputs.base-ref != '' && needs.preflight.outputs.dxe_core_qemu_sha != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: patina-qemu-efi-pr-${{ matrix.platform }}
           path: |
@@ -733,7 +733,7 @@ jobs:
 
       - name: Upload QEMU Linux ${{ matrix.platform }} Logs
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qemu-validation-logs-${{ runner.os }}-${{ matrix.platform }}
           path: ${{ env.LOG_DIR }}/*
@@ -771,7 +771,7 @@ jobs:
           New-Item -ItemType Directory -Path "$env:LOG_DIR" -Force | Out-Null
 
       - name: Setup Python (Windows)
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: ${{ needs.vars.outputs['python-version'] }}
 
@@ -911,7 +911,7 @@ jobs:
 
       - name: Upload QEMU Windows Logs
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qemu-validation-logs-${{ runner.os }}-Q35
           path: ${{ env.LOG_DIR }}/*
@@ -988,7 +988,7 @@ jobs:
 
       - name: Upload PR Metadata Artifact
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: patina-qemu-pr-metadata
           path: metadata/pr-metadata.json

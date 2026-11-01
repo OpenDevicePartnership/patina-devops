@@ -44,7 +44,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: 🔤 Check Spelling 🔤
-        uses: streetsidesoftware/cspell-action@6f3c77c1406bc930f944ba97e9801a22e42caf58 # v9.1.0
+        uses: streetsidesoftware/cspell-action@ce1816e4ce36532956ac6e983737392774b6e169 # v9.2.0
         with:
           treat_flagged_words_as_errors: true
           strict: true
@@ -122,7 +122,7 @@ jobs:
         shell: bash
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ runner.os }}-${{ runner.arch }}-ci-artifacts
           path: |
@@ -131,7 +131,7 @@ jobs:
 
       - name: Upload Additional Artifacts
         if: ${{ inputs.additional-artifacts != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ runner.os }}-${{ runner.arch }}-additional-artifacts
           path: ${{ inputs.additional-artifacts }}
