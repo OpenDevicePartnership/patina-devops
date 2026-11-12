@@ -524,6 +524,7 @@ jobs:
       image: ${{ needs.vars.outputs['container-image'] }}
       volumes:
         - /home/runner/work/_actions:/home/runner/work/_actions
+      options: ${{ matrix.platform == 'Q35' && '--device=/dev/kvm:/dev/kvm' || '' }}
 
     # Directory layout:
     #
