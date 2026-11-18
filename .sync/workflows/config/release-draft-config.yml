@@ -62,7 +62,19 @@ change-template: >-
     </li>
   </ul>
 
-change-title-escapes: '\<*_&@' # Note: @ is added to disable mentions
+# $TITLE is placed inside raw HTML in change-template, where Markdown backslash
+# escapes are not processed and would show literally. Encode the characters
+# that are special in HTML as entities instead, and only escape @ to disable
+# mentions.
+replacers:
+  - target: change-title
+    search: '/&/g'
+    replace: '&amp;'
+  - target: change-title
+    search: '/</g'
+    replace: '&lt;'
+
+change-title-escapes: '@'
 
 # Maintenance: Keep labels organized in ascending alphabetical order - easier to scan, identify duplicates, etc.
 version-resolver:
