@@ -24,6 +24,64 @@ jobs:
     name: Get Constants
     uses: OpenDevicePartnership/patina-devops/.github/workflows/qemu-constants.yml@main
 
+  # Preparing a Windows image downloads the full base image to compute its checksum, so Windows images are only
+  # refreshed on the first scheduled run of each day (or on a manual run). Ubuntu images use a small checksum
+  # file and are checked on every run.
+  refresh-windows-images:
+    name: Check Whether to Refresh Windows OS Images
+    runs-on: ubuntu-latest
+    outputs:
+      refresh: ${{ steps.check.outputs.refresh }}
+    steps:
+      - name: Check Schedule
+        id: check
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" != "schedule" ] || [ "$(date -u +%H)" -lt 6 ]; then
+            echo "refresh=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "refresh=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # PR validation restores these by key prefix, so the newest entry for each image is used. They're cached
+  # here and not in PR validation because PR validation only has read access to the cache.
+  populate-ubuntu-os-images:
+    name: Populate OS Image Cache - ${{ matrix.artifact-name }}
+    needs: vars
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image-url: ${{ needs.vars.outputs.ubuntu-x64-image }}
+            artifact-name: ${{ needs.vars.outputs.ubuntu-x64-artifact }}
+          - image-url: ${{ needs.vars.outputs.ubuntu-aarch64-image }}
+            artifact-name: ${{ needs.vars.outputs.ubuntu-aarch64-artifact }}
+    uses: OpenDevicePartnership/patina-devops/.github/workflows/PatinaQemuPrepareOsImages.yml@main
+    with:
+      image-url: ${{ matrix.image-url }}
+      artifact-name: ${{ matrix.artifact-name }}
+      upload-artifacts: false
+
+  populate-windows-os-images:
+    name: Populate OS Image Cache - ${{ matrix.artifact-name }}
+    needs: [vars, refresh-windows-images]
+    if: needs.refresh-windows-images.outputs.refresh == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image-url: ${{ needs.vars.outputs.windows-x64-image }}
+            artifact-name: ${{ needs.vars.outputs.windows-x64-artifact }}
+          - image-url: ${{ needs.vars.outputs.windows-aarch64-image }}
+            artifact-name: ${{ needs.vars.outputs.windows-aarch64-artifact }}
+    uses: OpenDevicePartnership/patina-devops/.github/workflows/PatinaQemuPrepareOsImages.yml@main
+    with:
+      image-url: ${{ matrix.image-url }}
+      artifact-name: ${{ matrix.artifact-name }}
+      upload-artifacts: false
+
   release:
     name: Resolve the patina-qemu Release
     runs-on: ubuntu-latest
