@@ -1,0 +1,59 @@
+# @file action.yml
+#
+# An action that renders the test app and OS boot sections of the Patina QEMU PR validation comment from the
+# result.json files uploaded by the validation jobs.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+##
+name: Render OS Boot and Test App Results
+
+description: >-
+  Reads the result.json files in a directory of downloaded qemu-test-apps-* and qemu-os-boot-* artifacts and
+  writes test-apps-section.md and os-boot-section.md. The results come from jobs that run pull request code, so
+  they are validated before being rendered.
+
+inputs:
+  os-boot-enabled:
+    description: Whether OS boot validation was enabled for the run ('true' or 'false').
+    required: false
+    default: 'false'
+  output-dir:
+    description: Directory to write test-apps-section.md and os-boot-section.md to.
+    required: true
+  release-tag:
+    description: Tag of the patina-qemu release the test apps came from.
+    required: false
+    default: ''
+  results-dir:
+    description: Directory containing the downloaded artifacts, one subdirectory per artifact.
+    required: true
+  test-apps-enabled:
+    description: Whether test app validation was enabled for the run ('true' or 'false').
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Render Sections
+      shell: python
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        OS_BOOT_ENABLED: ${{ inputs.os-boot-enabled }}
+        OUTPUT_DIR: ${{ inputs.output-dir }}
+        RELEASE_TAG: ${{ inputs.release-tag }}
+        RESULTS_DIR: ${{ inputs.results-dir }}
+        TEST_APPS_ENABLED: ${{ inputs.test-apps-enabled }}
+      run: |
+        import os, subprocess, sys
+
+        script = os.path.join(os.environ["ACTION_PATH"], "render_os_boot_and_tests.py")
+        sys.exit(subprocess.call([
+            sys.executable, script,
+            "--results-dir", os.environ["RESULTS_DIR"],
+            "--output-dir", os.environ["OUTPUT_DIR"],
+            "--release-tag", os.environ["RELEASE_TAG"],
+            "--test-apps-enabled", os.environ["TEST_APPS_ENABLED"],
+            "--os-boot-enabled", os.environ["OS_BOOT_ENABLED"],
+        ]))
