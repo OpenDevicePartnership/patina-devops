@@ -13,6 +13,15 @@
 #
 # Exactly one of either patina-ref or dxe-core-qemu-ref must be provided.
 #
+# In addition to booting to the EFI Shell, the DXE core is patched into
+# the pre-compiled patina-qemu release firmware to:
+#
+#   - Run the pre-compiled EFI test apps in the release's TestApps directory.
+#   - Boot Ubuntu and the Windows Validation OS from an internal (SSD) drive.
+#
+# All QEMU runs go through build_and_run_rust_binary.py in patina-qemu. OS
+# images come from the cache populated by PatinaQemuCachePopulation.yml.
+#
 # Copyright (c) Microsoft Corporation.
 # SPDX-License-Identifier: Apache-2.0
 ##
@@ -45,6 +54,16 @@ on:
         description: "Pull request number in the caller repository"
         required: true
         type: number
+      run-os-boot:
+        description: "Boot Ubuntu and the Windows Validation OS from an SSD on each platform and build target"
+        required: false
+        type: boolean
+        default: true
+      run-test-apps:
+        description: "Run the pre-compiled EFI test apps from the patina-qemu release on each platform and build target"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -829,10 +848,405 @@ jobs:
           path: ${{ env.LOG_DIR }}/*
           if-no-files-found: warn
 
+  # Builds the DXE core once for the test app and OS boot jobs so each of them can run build_and_run_rust_binary.py
+  # with --no-build.
+  build-dxe-core:
+    name: Build DXE Core for Test Apps and OS Boot
+    runs-on: ubuntu-latest
+    needs: [vars, preflight]
+    if: (inputs.run-test-apps || inputs.run-os-boot) && needs.preflight.outputs.assets_complete == 'true'
+    timeout-minutes: 90
+    container:
+      image: ${{ needs.vars.outputs['container-image'] }}
+      volumes:
+        - /home/runner/work/_actions:/home/runner/work/_actions
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          allow-unsafe-pr-checkout: true # Temporary. Tracked in https://github.com/OpenDevicePartnership/patina-devops/issues/166.
+          repository: ${{ inputs.patina-ref != '' && 'OpenDevicePartnership/patina' || 'OpenDevicePartnership/patina-dxe-core-qemu' }}
+          ref: ${{ needs.preflight.outputs.checkout_sha }}
+
+      # See validate-qemu-linux for why the container paths are set from $GITHUB_WORKSPACE.
+      - name: Set Container Paths
+        shell: bash
+        env:
+          IS_DXE_CORE_MODE: ${{ inputs.dxe-core-qemu-ref != '' }}
+        run: |
+          {
+            if [ "$IS_DXE_CORE_MODE" = "true" ]; then
+              echo "PATINA_REPO="
+              echo "DXE_CORE_QEMU_REPO=$GITHUB_WORKSPACE"
+            else
+              echo "PATINA_REPO=$GITHUB_WORKSPACE"
+              echo "DXE_CORE_QEMU_REPO=$(dirname "$GITHUB_WORKSPACE")/deps/patina-dxe-core-qemu"
+            fi
+            echo "DEPS_DIR=$GITHUB_WORKSPACE/../deps"
+            echo "LOG_DIR=$GITHUB_WORKSPACE/logs"
+          } >> "$GITHUB_ENV"
+
+      - name: Create Directories
+        shell: bash
+        run: |
+          mkdir -p "$DEPS_DIR"
+          mkdir -p "$LOG_DIR"
+
+      - name: Setup Python (Linux)
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ needs.vars.outputs['python-version'] }}
+
+      - name: Setup and Build patina-dxe-core-qemu
+        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
+        with:
+          deps-dir: ${{ env.DEPS_DIR }}
+          dxe-core-qemu-ref: ${{ needs.preflight.outputs.dxe_core_qemu_sha }}
+          dxe-core-qemu-repo: ${{ env.DXE_CORE_QEMU_REPO }}
+          log-file: ${{ env.LOG_DIR }}/build-dxe-core.log
+          patina-repo: ${{ env.PATINA_REPO }}
+
+      - name: Upload DXE Core EFI Binaries
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: patina-dxe-core-efi
+          path: |
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/x86_64-unknown-uefi/debug/qemu_q35_dxe_core.efi
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/x86_64-unknown-uefi/release/qemu_q35_dxe_core.efi
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/aarch64-unknown-uefi/debug/qemu_armvirt_dxe_core.efi
+            ${{ env.DXE_CORE_QEMU_REPO }}/target/aarch64-unknown-uefi/release/qemu_armvirt_dxe_core.efi
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+
+      - name: Upload Build Log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qemu-validation-logs-Linux-DxeCoreBuild
+          path: ${{ env.LOG_DIR }}/*
+          if-no-files-found: warn
+
+  # PR validation can only read the cache, which is populated by PatinaQemuCachePopulation.yml. Whichever
+  # cache entry is newest for each image is used. A missing entry makes the OS boot jobs report the image as
+  # unavailable instead of failing.
+  restore-os-images:
+    name: Restore OS Image - ${{ matrix.artifact-name }}
+    runs-on: ubuntu-latest
+    needs: [vars, preflight]
+    if: inputs.run-os-boot && needs.preflight.outputs.assets_complete == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        artifact-name:
+          - ${{ needs.vars.outputs.ubuntu-x64-artifact }}
+          - ${{ needs.vars.outputs.ubuntu-aarch64-artifact }}
+          - ${{ needs.vars.outputs.windows-x64-artifact }}
+          - ${{ needs.vars.outputs.windows-aarch64-artifact }}
+    steps:
+      - name: Restore OS Image Cache
+        id: os-image-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: artifacts
+          key: ${{ matrix.artifact-name }}-latest
+          restore-keys: ${{ matrix.artifact-name }}-
+          enableCrossOsArchive: true
+
+      - name: Warn About Missing OS Image
+        if: steps.os-image-cache.outputs.cache-matched-key == ''
+        shell: bash
+        run: echo "::warning::No cached OS image found for ${{ matrix.artifact-name }}. OS boot jobs using it will be reported as unavailable."
+
+      - name: Publish OS Image
+        if: steps.os-image-cache.outputs.cache-matched-key != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ matrix.artifact-name }}
+          path: artifacts/
+          retention-days: 1
+          if-no-files-found: error
+
+  validate-test-apps:
+    name: Test Apps - ${{ matrix.platform }} ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    needs: [vars, preflight, build-dxe-core]
+    if: inputs.run-test-apps && needs.preflight.outputs.assets_complete == 'true'
+    timeout-minutes: 30
+    container:
+      image: ${{ needs.vars.outputs['container-image'] }}
+      volumes:
+        - /home/runner/work/_actions:/home/runner/work/_actions
+      options: ${{ matrix.platform == 'Q35' && '--device=/dev/kvm:/dev/kvm' || '' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [Q35, ArmVirt]
+        target: [DEBUG, RELEASE]
+        include:
+          - platform: Q35
+            fw_cache_key_suffix: q35
+            fw_dir: Q35
+            fw_zip: q35.zip
+            rom_file: QEMUQ35_CODE.fd
+          - platform: ArmVirt
+            fw_cache_key_suffix: armvirt
+            fw_dir: ArmVirt
+            fw_zip: armvirt.zip
+            rom_file: QEMU_EFI.fd
+
+    steps:
+      # Container paths must come from $GITHUB_WORKSPACE, see validate-qemu-linux.
+      - name: Set Container Paths
+        shell: bash
+        run: |
+          {
+            echo "DEPS_DIR=$GITHUB_WORKSPACE/../deps"
+            echo "DXE_CORE_QEMU_REPO=$GITHUB_WORKSPACE/../deps/patina-dxe-core-qemu"
+            echo "FW_PATCHER_REPO=$GITHUB_WORKSPACE/../deps/patina-fw-patcher"
+            echo "PATINA_QEMU_REPO=$GITHUB_WORKSPACE/../deps/patina-qemu"
+            echo "FW_DIR=$GITHUB_WORKSPACE/firmware"
+            echo "LOG_DIR=$GITHUB_WORKSPACE/logs"
+          } >> "$GITHUB_ENV"
+
+      - name: Create Directories
+        shell: bash
+        run: |
+          mkdir -p "$DEPS_DIR"
+          mkdir -p "$LOG_DIR"
+
+      - name: Setup Python (Linux)
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ needs.vars.outputs['python-version'] }}
+
+      - name: Fetch patina-qemu Firmware
+        uses: OpenDevicePartnership/patina-devops/.github/actions/fetch-patina-qemu-firmware@main
+        with:
+          cache-key: patina-qemu-fw-${{ matrix.fw_cache_key_suffix }}-${{ runner.os }}-${{ needs.preflight.outputs.fw_release_tag }}
+          destination: ${{ env.FW_DIR }}
+          fw-zip: ${{ matrix.fw_zip }}
+          url: ${{ matrix.platform == 'Q35' && needs.preflight.outputs.q35_fw_url || needs.preflight.outputs.armvirt_fw_url }}
+
+      - name: Setup patina-qemu Run Script
+        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
+        with:
+          build: 'false'
+          deps-dir: ${{ env.DEPS_DIR }}
+          dxe-core-qemu-repo: ${{ env.DXE_CORE_QEMU_REPO }}
+          fw-patcher-repo: ${{ env.FW_PATCHER_REPO }}
+          patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
+
+      - name: Download DXE Core EFI Binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: patina-dxe-core-efi
+          path: ${{ env.DXE_CORE_QEMU_REPO }}/target
+
+      # Releases created before test apps were published do not have a TestApps directory.
+      - name: Locate Test Apps
+        id: apps
+        shell: bash
+        env:
+          TEST_APPS_DIR: ${{ env.FW_DIR }}/${{ matrix.fw_dir }}/${{ matrix.target }} Linux/TestApps
+        run: |
+          if compgen -G "$TEST_APPS_DIR/*.efi" > /dev/null; then
+            echo "dir=$TEST_APPS_DIR" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::The ${{ needs.preflight.outputs.fw_release_tag }} patina-qemu release has no test apps for ${{ matrix.platform }} ${{ matrix.target }}."
+            echo "dir=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run Test Apps - ${{ matrix.platform }} ${{ matrix.target }}
+        id: run
+        if: steps.apps.outputs.dir != ''
+        uses: OpenDevicePartnership/patina-devops/.github/actions/run-patina-qemu-validation@main
+        with:
+          build-target: ${{ matrix.target }}
+          fw-patch-repo: ${{ env.FW_PATCHER_REPO }}
+          log-file: ${{ env.LOG_DIR }}/test-apps-${{ matrix.platform }}-${{ matrix.target }}.log
+          no-build: 'true'
+          patina-dxe-core-repo: ${{ env.DXE_CORE_QEMU_REPO }}
+          patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
+          platform: ${{ matrix.platform }}
+          pre-compiled-rom: ${{ env.FW_DIR }}/${{ matrix.fw_dir }}/${{ matrix.target }} Linux/${{ matrix.rom_file }}
+          test-apps-dir: ${{ steps.apps.outputs.dir }}
+          timeout-seconds: '900'
+
+      - name: Write Test Apps Result
+        if: always()
+        uses: OpenDevicePartnership/patina-devops/.github/actions/write-qemu-validation-result@main
+        with:
+          kind: test-apps
+          log-file: ${{ env.LOG_DIR }}/test-apps-${{ matrix.platform }}-${{ matrix.target }}.log
+          outcome: ${{ steps.apps.outcome == 'success' && (steps.apps.outputs.dir == '' && 'unavailable' || steps.run.outcome) || 'failure' }}
+          output: ${{ env.LOG_DIR }}/result.json
+          platform: ${{ matrix.platform }}
+          reason: ${{ steps.apps.outputs.dir == '' && 'The patina-qemu release does not include test apps.' || '' }}
+          target: ${{ matrix.target }}
+
+      - name: Upload Test App Results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qemu-test-apps-${{ matrix.platform }}-${{ matrix.target }}
+          path: ${{ env.LOG_DIR }}/*
+          if-no-files-found: warn
+
+  validate-os-boot:
+    name: OS Boot - ${{ matrix.platform }} ${{ matrix.target }} ${{ matrix.os == 'windows' && 'Windows' || 'Ubuntu' }} SSD
+    runs-on: ubuntu-latest
+    needs: [vars, preflight, build-dxe-core, restore-os-images]
+    if: inputs.run-os-boot && needs.preflight.outputs.assets_complete == 'true'
+    timeout-minutes: 40
+    container:
+      image: ${{ needs.vars.outputs['container-image'] }}
+      volumes:
+        - /home/runner/work/_actions:/home/runner/work/_actions
+      options: --security-opt seccomp=unconfined ${{ matrix.platform == 'Q35' && '--device=/dev/kvm:/dev/kvm' || '' }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Q35
+            target: DEBUG
+            os: ubuntu
+            os_artifact: ${{ needs.vars.outputs.ubuntu-x64-artifact }}
+          - platform: Q35
+            target: RELEASE
+            os: ubuntu
+            os_artifact: ${{ needs.vars.outputs.ubuntu-x64-artifact }}
+          - platform: Q35
+            target: DEBUG
+            os: windows
+            os_artifact: ${{ needs.vars.outputs.windows-x64-artifact }}
+          - platform: Q35
+            target: RELEASE
+            os: windows
+            os_artifact: ${{ needs.vars.outputs.windows-x64-artifact }}
+          - platform: ArmVirt
+            target: DEBUG
+            os: ubuntu
+            os_artifact: ${{ needs.vars.outputs.ubuntu-aarch64-artifact }}
+          - platform: ArmVirt
+            target: RELEASE
+            os: ubuntu
+            os_artifact: ${{ needs.vars.outputs.ubuntu-aarch64-artifact }}
+          - platform: ArmVirt
+            target: DEBUG
+            os: windows
+            os_artifact: ${{ needs.vars.outputs.windows-aarch64-artifact }}
+          - platform: ArmVirt
+            target: RELEASE
+            os: windows
+            os_artifact: ${{ needs.vars.outputs.windows-aarch64-artifact }}
+
+    steps:
+      # Container paths must come from $GITHUB_WORKSPACE, see validate-qemu-linux.
+      - name: Set Container Paths
+        shell: bash
+        run: |
+          {
+            echo "DEPS_DIR=$GITHUB_WORKSPACE/../deps"
+            echo "DXE_CORE_QEMU_REPO=$GITHUB_WORKSPACE/../deps/patina-dxe-core-qemu"
+            echo "FW_PATCHER_REPO=$GITHUB_WORKSPACE/../deps/patina-fw-patcher"
+            echo "PATINA_QEMU_REPO=$GITHUB_WORKSPACE/../deps/patina-qemu"
+            echo "FW_DIR=$GITHUB_WORKSPACE/firmware"
+            echo "LOG_DIR=$GITHUB_WORKSPACE/logs"
+            echo "OS_DIR=$GITHUB_WORKSPACE/os-boot-artifacts"
+          } >> "$GITHUB_ENV"
+
+      - name: Create Directories
+        shell: bash
+        run: |
+          mkdir -p "$DEPS_DIR"
+          mkdir -p "$LOG_DIR"
+
+      - name: Setup Python (Linux)
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ needs.vars.outputs['python-version'] }}
+
+      - name: Fetch patina-qemu Firmware
+        uses: OpenDevicePartnership/patina-devops/.github/actions/fetch-patina-qemu-firmware@main
+        with:
+          cache-key: patina-qemu-fw-${{ matrix.platform == 'Q35' && 'q35' || 'armvirt' }}-${{ runner.os }}-${{ needs.preflight.outputs.fw_release_tag }}
+          destination: ${{ env.FW_DIR }}
+          fw-zip: ${{ matrix.platform == 'Q35' && 'q35.zip' || 'armvirt.zip' }}
+          url: ${{ matrix.platform == 'Q35' && needs.preflight.outputs.q35_fw_url || needs.preflight.outputs.armvirt_fw_url }}
+
+      - name: Setup patina-qemu Run Script
+        uses: OpenDevicePartnership/patina-devops/.github/actions/setup-patina-qemu-validation@main
+        with:
+          build: 'false'
+          deps-dir: ${{ env.DEPS_DIR }}
+          dxe-core-qemu-repo: ${{ env.DXE_CORE_QEMU_REPO }}
+          fw-patcher-repo: ${{ env.FW_PATCHER_REPO }}
+          patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
+
+      - name: Download DXE Core EFI Binaries
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: patina-dxe-core-efi
+          path: ${{ env.DXE_CORE_QEMU_REPO }}/target
+
+      # The artifact is missing when no OS image has been cached yet.
+      - name: Download OS Image
+        id: os-image
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ matrix.os_artifact }}
+          path: ${{ env.OS_DIR }}
+
+      - name: Run OS Boot - ${{ matrix.platform }} ${{ matrix.target }} ${{ matrix.os == 'windows' && 'Windows' || 'Ubuntu' }}
+        id: run
+        if: steps.os-image.outcome == 'success'
+        uses: OpenDevicePartnership/patina-devops/.github/actions/run-patina-qemu-validation@main
+        with:
+          build-target: ${{ matrix.target }}
+          fw-patch-repo: ${{ env.FW_PATCHER_REPO }}
+          log-file: ${{ env.LOG_DIR }}/os-boot-${{ matrix.platform }}-${{ matrix.target }}-${{ matrix.os }}.log
+          no-build: 'true'
+          os-boot-device: ssd
+          os-image: ${{ env.OS_DIR }}/image.qcow2
+          patina-dxe-core-repo: ${{ env.DXE_CORE_QEMU_REPO }}
+          patina-qemu-repo: ${{ env.PATINA_QEMU_REPO }}
+          platform: ${{ matrix.platform }}
+          pre-compiled-rom: ${{ env.FW_DIR }}/${{ matrix.platform }}/${{ matrix.target }} Linux/${{ matrix.platform == 'Q35' && 'QEMUQ35_CODE.fd' || 'QEMU_EFI.fd' }}
+          seed-iso: ${{ matrix.os == 'ubuntu' && format('{0}/seed.iso', env.OS_DIR) || '' }}
+          timeout-seconds: '1500'
+
+      - name: Write OS Boot Result
+        if: always()
+        uses: OpenDevicePartnership/patina-devops/.github/actions/write-qemu-validation-result@main
+        with:
+          image-metadata: ${{ env.OS_DIR }}/${{ matrix.os_artifact }}.json
+          kind: os-boot
+          log-file: ${{ env.LOG_DIR }}/os-boot-${{ matrix.platform }}-${{ matrix.target }}-${{ matrix.os }}.log
+          os-artifact: ${{ matrix.os_artifact }}
+          os-boot-device: ssd
+          outcome: ${{ steps.os-image.outcome == 'success' && steps.run.outcome || 'unavailable' }}
+          output: ${{ env.LOG_DIR }}/result.json
+          platform: ${{ matrix.platform }}
+          reason: ${{ steps.os-image.outcome != 'success' && 'No cached OS image was available.' || '' }}
+          target: ${{ matrix.target }}
+
+      - name: Upload OS Boot Results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qemu-os-boot-${{ matrix.platform }}-${{ matrix.target }}-${{ matrix.os }}
+          path: ${{ env.LOG_DIR }}/*
+          if-no-files-found: warn
+
   emit-pr-metadata:
     name: Emit PR Metadata
     runs-on: ubuntu-latest
-    needs: [preflight, build-size-baseline, validate-qemu-linux, validate-qemu-windows]
+    needs: [preflight, build-size-baseline, build-dxe-core, validate-qemu-linux, validate-qemu-windows, validate-test-apps, validate-os-boot]
     if: always()
     steps:
       - name: Write PR Metadata
@@ -849,6 +1263,9 @@ jobs:
           preflight_result = '${{ needs.preflight.result }}'
           linux_result = '${{ needs.validate-qemu-linux.result }}'
           windows_result = '${{ needs.validate-qemu-windows.result }}'
+          build_dxe_core_result = '${{ needs.build-dxe-core.result }}'
+          test_apps_result = '${{ needs.validate-test-apps.result }}'
+          os_boot_result = '${{ needs.validate-os-boot.result }}'
 
           metadata = {
               'pr_number': ${{ inputs.pr-number }},
@@ -886,9 +1303,17 @@ jobs:
               'validation': {
                   'linux_result': linux_result,
                   'windows_result': windows_result,
+                  'build_dxe_core_result': build_dxe_core_result,
+                  'test_apps_enabled': '${{ inputs.run-test-apps }}' == 'true',
+                  'test_apps_result': test_apps_result,
+                  'os_boot_enabled': '${{ inputs.run-os-boot }}' == 'true',
+                  'os_boot_result': os_boot_result,
                   'failed': (
                       linux_result not in ('success', 'skipped') or
                       windows_result not in ('success', 'skipped') or
+                      build_dxe_core_result not in ('success', 'skipped') or
+                      test_apps_result not in ('success', 'skipped') or
+                      os_boot_result not in ('success', 'skipped') or
                       preflight_result != 'success'
                   )
               }
