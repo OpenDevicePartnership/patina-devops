@@ -92,6 +92,9 @@ jobs:
           write('skip_reason', data.get('skip_reason', ''))
           validation = data.get('validation', {})
           write('validation_failed', 'true' if validation.get('failed') else 'false')
+          write('test_apps_enabled', str(validation.get('test_apps_enabled', False)).lower())
+          write('os_boot_enabled', str(validation.get('os_boot_enabled', False)).lower())
+          write('patina_qemu_fw_tag', data.get('deps', {}).get('patina_qemu_fw_tag', ''))
 
           # Build a dependency details markdown section from the deps metadata.
           deps = data.get('deps', {})
@@ -407,6 +410,41 @@ jobs:
           run-id: ${{ inputs.triggering-run-id }}
           repository: ${{ github.repository }}
 
+      - name: Download Test App and OS Boot Results
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.readiness_mismatch != 'true' && (steps.metadata.outputs.test_apps_enabled == 'true' || steps.metadata.outputs.os_boot_enabled == 'true')
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          path: os-boot-and-test-results
+          pattern: qemu-{test-apps,os-boot}-*
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.triggering-run-id }}
+
+      - name: Render Test App and OS Boot Results
+        continue-on-error: true
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.readiness_mismatch != 'true' && (steps.metadata.outputs.test_apps_enabled == 'true' || steps.metadata.outputs.os_boot_enabled == 'true')
+        uses: OpenDevicePartnership/patina-devops/.github/actions/render-os-boot-and-test-results@main
+        with:
+          os-boot-enabled: ${{ steps.metadata.outputs.os_boot_enabled }}
+          output-dir: os-boot-and-test-sections
+          release-tag: ${{ steps.metadata.outputs.patina_qemu_fw_tag }}
+          results-dir: os-boot-and-test-results
+          test-apps-enabled: ${{ steps.metadata.outputs.test_apps_enabled }}
+
+      - name: Export Test App and OS Boot Sections
+        if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.readiness_mismatch != 'true' && (steps.metadata.outputs.test_apps_enabled == 'true' || steps.metadata.outputs.os_boot_enabled == 'true')
+        shell: bash
+        run: |
+          for pair in "TEST_APPS_SECTION:test-apps-section.md" "OS_BOOT_SECTION:os-boot-section.md"; do
+            delimiter="SECTION_EOF_$(date +%s%N)"
+            {
+              echo "${pair%%:*}<<${delimiter}"
+              cat "os-boot-and-test-sections/${pair#*:}" 2>/dev/null || true
+              echo "${delimiter}"
+            } >> "$GITHUB_ENV"
+          done
+
       - name: Extract Errors from QEMU Logs
         if: steps.download-metadata.outcome == 'success' && steps.metadata.outputs.skipped != 'true' && steps.metadata.outputs.assets_complete != 'false' && steps.metadata.outputs.validation_failed == 'true' && steps.metadata.outputs.readiness_mismatch != 'true'
         uses: OpenDevicePartnership/patina-devops/.github/actions/extract-build-errors@main
@@ -600,6 +638,8 @@ jobs:
               '',
               ...tableLines,
               errorSection,
+              ...(process.env.TEST_APPS_SECTION ? ['', process.env.TEST_APPS_SECTION] : []),
+              ...(process.env.OS_BOOT_SECTION ? ['', process.env.OS_BOOT_SECTION] : []),
               ...(depsSection ? ['', depsSection] : []),
               '',
               ...(process.env.BUILD_SIZE_SECTION ? ['', process.env.BUILD_SIZE_SECTION, ''] : []),
@@ -707,6 +747,8 @@ jobs:
               '',
               `**Workflow run:** ${runUrl}`,
               timingSection,
+              ...(process.env.TEST_APPS_SECTION ? [process.env.TEST_APPS_SECTION] : []),
+              ...(process.env.OS_BOOT_SECTION ? [process.env.OS_BOOT_SECTION] : []),
               ...(depsSection ? ['', depsSection, ''] : []),
               ...(process.env.BUILD_SIZE_SECTION ? ['', process.env.BUILD_SIZE_SECTION, ''] : []),
               marker,
