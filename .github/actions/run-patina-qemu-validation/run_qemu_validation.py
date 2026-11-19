@@ -21,6 +21,9 @@ JSON keys:
   log_file            (string, required)  Absolute path to the output log file.
   no_build            (bool, optional)    Skip building the firmware.
                       Default: false.
+  os_boot_device      (string, optional)  Device the os_image is attached as
+                      ("ssd" or "usb"). Default: "ssd".
+  os_image            (string, optional)  Path to an OS image (qcow2) to boot.
   patina_dxe_core_repo (string, required) Path to the patina-dxe-core-qemu
                       repository.
   patina_qemu_repo    (string, required)  Path to the patina-qemu repository
@@ -31,14 +34,30 @@ JSON keys:
                       file.
   qemu_path           (string, optional)  Path to the QEMU executable. Only
                       needed on Windows when QEMU is not on PATH. Default: "".
+  seed_iso            (string, optional)  Path to a cloud-init seed ISO attached
+                      as a virtio drive alongside the os_image.
   shutdown_after_run  (bool, optional)    Shut down QEMU after running.
                       Default: false.
+  test_apps_dir       (string, optional)  Directory of pre-compiled EFI test
+                      apps to run from the UEFI Shell. A JSON summary of the
+                      results is written next to the log file as
+                      <log_stem>.test-results.json.
+  timeout_seconds     (int, optional)     Maximum time to wait for
+                      build_and_run_rust_binary.py. Default: 300.
+
+A <log_stem>.timing.json file is written next to the log file with the total
+elapsed time and, when reported by build_and_run_rust_binary.py, the QEMU run
+time in seconds.
+
+Copyright (c) Microsoft Corporation.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import argparse
 import json
 import os
 import pathlib
+import re
 import signal
 import subprocess
 import sys
@@ -46,7 +65,8 @@ import threading
 import time
 from typing import IO
 
-# Maximum time in seconds to wait for build_and_run_rust_binary.py to complete.
+# Default maximum time in seconds to wait for build_and_run_rust_binary.py to
+# complete. Overridden with the timeout_seconds configuration key.
 SUBPROCESS_TIMEOUT_SECONDS = 300  # 5 minutes
 
 # Maximum time in seconds to wait for stream reader threads to finish after
@@ -54,12 +74,20 @@ SUBPROCESS_TIMEOUT_SECONDS = 300  # 5 minutes
 # grandchild processes (e.g. QEMU) keep pipe handles open.
 THREAD_JOIN_TIMEOUT_SECONDS = 15
 
+# Matches the QEMU run time build_and_run_rust_binary.py logs after QEMU exits.
+_QEMU_RUN_TIME_PATTERN = re.compile(rb"QEMU Run Time: ([0-9]+(?:\.[0-9]+)?) seconds")
+
 # Default values applied when a key is absent in the JSON input.
 _DEFAULTS = {
     "build_target": "DEBUG",
+    "os_boot_device": "ssd",
+    "os_image": "",
     "qemu_path": "",
     "no_build": False,
+    "seed_iso": "",
     "shutdown_after_run": False,
+    "test_apps_dir": "",
+    "timeout_seconds": SUBPROCESS_TIMEOUT_SECONDS,
 }
 
 
@@ -111,6 +139,7 @@ def _load_config() -> dict:
 
     raw["no_build"] = _coerce_bool(raw["no_build"])
     raw["shutdown_after_run"] = _coerce_bool(raw["shutdown_after_run"])
+    raw["timeout_seconds"] = int(raw["timeout_seconds"])
 
     return raw
 
@@ -152,12 +181,22 @@ def _kill_process_tree(proc: subprocess.Popen) -> None:
             pass
 
 
+def _read_qemu_run_seconds(log_path: pathlib.Path) -> "float | None":
+    """Return the QEMU run time reported in the log, or None if it was not reported."""
+    try:
+        matches = _QEMU_RUN_TIME_PATTERN.findall(log_path.read_bytes())
+    except OSError:
+        return None
+    return float(matches[-1]) if matches else None
+
+
 def _write_timing(log_path: pathlib.Path, elapsed_seconds: float) -> None:
     """Write a timing JSON file alongside the log for downstream consumption.
 
     The file is written to ``<log_stem>.timing.json`` in the same directory
     as the log file.  It will automatically be picked up in the log artifact
-    upload step.
+    upload step.  ``qemu_run_seconds`` is the time QEMU itself ran, as reported
+    by build_and_run_rust_binary.py, and is omitted when it was not reported.
     """
     timing_path = log_path.with_suffix(".timing.json")
     minutes, secs = divmod(elapsed_seconds, 60)
@@ -168,6 +207,9 @@ def _write_timing(log_path: pathlib.Path, elapsed_seconds: float) -> None:
             else f"{secs:.1f}s"
         ),
     }
+    qemu_run_seconds = _read_qemu_run_seconds(log_path)
+    if qemu_run_seconds is not None:
+        timing_data["qemu_run_seconds"] = round(qemu_run_seconds, 2)
     timing_path.write_text(json.dumps(timing_data), encoding="utf-8")
 
 
@@ -190,6 +232,15 @@ def main() -> int:
 
     if config.get("qemu_path"):
         cmd += ["--qemu-path", config["qemu_path"]]
+    if config.get("os_image"):
+        cmd += ["--os", config["os_image"], "--os-boot-device", config["os_boot_device"]]
+    if config.get("seed_iso"):
+        cmd += ["--with-drive", config["seed_iso"]]
+    if config.get("test_apps_dir"):
+        cmd += [
+            "--test-apps-dir", config["test_apps_dir"],
+            "--test-results-file", str(log_path.with_suffix(".test-results.json")),
+        ]
     cmd.append("--headless")
     cmd.append("--do-not-exit-on-patina-test-failure")
     if config.get("no_build"):
@@ -231,7 +282,7 @@ def main() -> int:
 
         timed_out = False
         try:
-            return_code = process.wait(timeout=SUBPROCESS_TIMEOUT_SECONDS)
+            return_code = process.wait(timeout=config["timeout_seconds"])
         except subprocess.TimeoutExpired:
             timed_out = True
             _kill_process_tree(process)
@@ -253,7 +304,7 @@ def main() -> int:
     if timed_out:
         timeout_msg = (
             f"ERROR: build_and_run_rust_binary.py timed out after "
-            f"{SUBPROCESS_TIMEOUT_SECONDS} seconds.\n"
+            f"{config['timeout_seconds']} seconds.\n"
         ).encode()
         sys.stderr.buffer.write(timeout_msg)
         sys.stderr.buffer.flush()
