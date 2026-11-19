@@ -1,0 +1,85 @@
+# @file action.yml
+#
+# An action that records the result of one Patina QEMU validation run (test apps or OS boot) as result.json so
+# the Patina QEMU PR Validation Post workflow can report it.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+##
+name: Write QEMU Validation Result
+
+description: >-
+  Writes result.json for a QEMU validation run using the run step outcome, the timing file written by
+  run-patina-qemu-validation, and the test app results or OS image metadata for the run.
+
+inputs:
+  image-metadata:
+    description: Path to the OS image metadata JSON (OS boot only).
+    required: false
+    default: ''
+  kind:
+    description: Kind of run, "test-apps" or "os-boot".
+    required: true
+  log-file:
+    description: Path to the run's log file. The timing and test results files are read from next to it.
+    required: true
+  os-artifact:
+    description: Name of the OS image artifact (OS boot only).
+    required: false
+    default: ''
+  os-boot-device:
+    description: Device the OS image was attached as (OS boot only).
+    required: false
+    default: ''
+  outcome:
+    description: Outcome of the run step, or "unavailable" if the run could not be started.
+    required: true
+  output:
+    description: Path to write result.json to.
+    required: true
+  platform:
+    description: QEMU platform name (Q35 or ArmVirt).
+    required: true
+  reason:
+    description: Why the run was unavailable.
+    required: false
+    default: ''
+  target:
+    description: Build target (DEBUG or RELEASE).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Write result.json
+      shell: python
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        IMAGE_METADATA: ${{ inputs.image-metadata }}
+        KIND: ${{ inputs.kind }}
+        LOG_FILE: ${{ inputs.log-file }}
+        OS_ARTIFACT: ${{ inputs.os-artifact }}
+        OS_BOOT_DEVICE: ${{ inputs.os-boot-device }}
+        OUTCOME: ${{ inputs.outcome }}
+        OUTPUT: ${{ inputs.output }}
+        PLATFORM: ${{ inputs.platform }}
+        REASON: ${{ inputs.reason }}
+        TARGET: ${{ inputs.target }}
+      run: |
+        import json, os, subprocess, sys
+
+        config = json.dumps({
+            "image_metadata": os.environ["IMAGE_METADATA"],
+            "kind": os.environ["KIND"],
+            "log_file": os.environ["LOG_FILE"],
+            "os_artifact": os.environ["OS_ARTIFACT"],
+            "os_boot_device": os.environ["OS_BOOT_DEVICE"],
+            "outcome": os.environ["OUTCOME"],
+            "output": os.environ["OUTPUT"],
+            "platform": os.environ["PLATFORM"],
+            "reason": os.environ["REASON"],
+            "target": os.environ["TARGET"],
+        })
+
+        script = os.path.join(os.environ["ACTION_PATH"], "write_result.py")
+        sys.exit(subprocess.call([sys.executable, script, config]))

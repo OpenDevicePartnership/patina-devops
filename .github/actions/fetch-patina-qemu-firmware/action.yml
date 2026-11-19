@@ -1,0 +1,58 @@
+# @file action.yml
+#
+# An action that makes the pre-compiled patina-qemu firmware available to a Linux job. The release zip is restored
+# from the cache populated by PatinaQemuCachePopulation.yml when possible and downloaded otherwise.
+#
+# Copyright (c) Microsoft Corporation.
+# SPDX-License-Identifier: Apache-2.0
+##
+name: Fetch patina-qemu Firmware
+
+description: >-
+  Restores a patina-qemu release firmware zip from the cache (or downloads it) and extracts it. The cache path and key
+  must match the ones used by PatinaQemuCachePopulation.yml.
+
+inputs:
+  cache-key:
+    description: Cache key of the firmware zip (for example patina-qemu-fw-q35-Linux-v1.2.3).
+    required: true
+  destination:
+    description: Absolute path of the directory to extract the firmware into.
+    required: true
+  fw-zip:
+    description: File name the zip is cached as (for example q35.zip).
+    required: true
+  url:
+    description: URL to download the firmware zip from on a cache miss.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Restore patina-qemu FW Binary Cache
+      id: firmware-cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .cache/patina-qemu/${{ inputs.fw-zip }}
+        key: ${{ inputs.cache-key }}
+
+    - name: Download patina-qemu FW Binary
+      if: steps.firmware-cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        FW_URL: ${{ inputs.url }}
+        FW_ZIP: ${{ inputs.fw-zip }}
+      run: |
+        set -euo pipefail
+        mkdir -p .cache/patina-qemu
+        curl -fL "$FW_URL" -o ".cache/patina-qemu/$FW_ZIP"
+
+    - name: Extract patina-qemu FW Binary
+      shell: bash
+      env:
+        DESTINATION: ${{ inputs.destination }}
+        FW_ZIP: ${{ inputs.fw-zip }}
+      run: |
+        set -euo pipefail
+        mkdir -p "$DESTINATION"
+        unzip -o ".cache/patina-qemu/$FW_ZIP" -d "$DESTINATION"

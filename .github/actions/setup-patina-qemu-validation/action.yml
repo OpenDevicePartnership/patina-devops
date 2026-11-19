@@ -9,6 +9,12 @@ description: >-
   Requires Python 3.11 or newer on PATH.
 
 inputs:
+  build:
+    description: >-
+      Whether to clone and build patina-dxe-core-qemu ('true' or 'false'). Set to 'false' for jobs that use a
+      prebuilt DXE core and only need the firmware patcher and the patina-qemu run script.
+    required: false
+    default: 'true'
   patina-repo:
     description: >-
       Absolute path to the patina repository root (used for crate patch).
@@ -52,6 +58,7 @@ runs:
   using: composite
   steps:
     - name: Clone patina-dxe-core-qemu
+      if: inputs.build == 'true'
       shell: bash
       env:
         DXE_REF: ${{ inputs.dxe-core-qemu-ref }}
@@ -68,6 +75,7 @@ runs:
         fi
 
     - name: Install QEMU Rust Tools
+      if: inputs.build == 'true'
       uses: OpenDevicePartnership/patina-devops/.github/actions/rust-tool-cache@main
       with:
         rust-toolchain-file: ${{ inputs.dxe-core-qemu-repo }}/rust-toolchain.toml
@@ -102,6 +110,7 @@ runs:
         fi
 
     - name: Build patina-dxe-core-qemu with PR Changes
+      if: inputs.build == 'true'
       shell: bash
       env:
         BUILD_LOG_FILE: ${{ inputs.log-file }}
@@ -142,6 +151,7 @@ runs:
         run_cmd cargo make armvirt-release -- --exclude-features exit_on_patina_test_failure
 
     - name: Verify Build Sources and Record Metadata
+      if: inputs.build == 'true'
       shell: python
       env:
         DXE_CORE_QEMU_REPO: ${{ inputs.dxe-core-qemu-repo }}
