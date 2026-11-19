@@ -21,6 +21,14 @@ inputs:
     description: Skip building the firmware ('true' or 'false').
     required: false
     default: 'false'
+  os-boot-device:
+    description: Device the os-image is attached as ('ssd' or 'usb').
+    required: false
+    default: ssd
+  os-image:
+    description: Absolute path to an OS image (qcow2) to boot. When empty, no OS image is attached.
+    required: false
+    default: ''
   patina-dxe-core-repo:
     description: Absolute path to the patina-dxe-core-qemu repository.
     required: true
@@ -37,10 +45,24 @@ inputs:
     description: Path to the QEMU executable.
     required: false
     default: ''
+  seed-iso:
+    description: Absolute path to a cloud-init seed ISO to attach alongside the os-image.
+    required: false
+    default: ''
   shutdown-after-run:
     description: Shut down QEMU after running ('true' or 'false').
     required: false
     default: 'false'
+  test-apps-dir:
+    description: >-
+      Absolute path to a directory of pre-compiled EFI test apps to run from the UEFI Shell. Results are
+      written next to the log file as <log-stem>.test-results.json.
+    required: false
+    default: ''
+  timeout-seconds:
+    description: Maximum time in seconds to wait for build_and_run_rust_binary.py.
+    required: false
+    default: '300'
 
 runs:
   using: composite
@@ -53,12 +75,17 @@ runs:
         FW_PATCH_REPO: ${{ inputs.fw-patch-repo }}
         LOG_FILE: ${{ inputs.log-file }}
         NO_BUILD: ${{ inputs.no-build }}
+        OS_BOOT_DEVICE: ${{ inputs.os-boot-device }}
+        OS_IMAGE: ${{ inputs.os-image }}
         PATINA_DXE_CORE_REPO: ${{ inputs.patina-dxe-core-repo }}
         PATINA_QEMU_REPO: ${{ inputs.patina-qemu-repo }}
         PLATFORM: ${{ inputs.platform }}
         PRE_COMPILED_ROM: ${{ inputs.pre-compiled-rom }}
         QEMU_PATH: ${{ inputs.qemu-path }}
+        SEED_ISO: ${{ inputs.seed-iso }}
         SHUTDOWN_AFTER_RUN: ${{ inputs.shutdown-after-run }}
+        TEST_APPS_DIR: ${{ inputs.test-apps-dir }}
+        TIMEOUT_SECONDS: ${{ inputs.timeout-seconds }}
       run: |
         import json, os, subprocess, sys
 
@@ -67,12 +94,17 @@ runs:
             "fw_patch_repo": os.environ["FW_PATCH_REPO"],
             "log_file": os.environ["LOG_FILE"],
             "no_build": os.environ.get("NO_BUILD", "false").lower() == "true",
+            "os_boot_device": os.environ.get("OS_BOOT_DEVICE", "ssd"),
+            "os_image": os.environ.get("OS_IMAGE", ""),
             "patina_dxe_core_repo": os.environ["PATINA_DXE_CORE_REPO"],
             "patina_qemu_repo": os.environ["PATINA_QEMU_REPO"],
             "platform": os.environ["PLATFORM"],
             "pre_compiled_rom": os.environ["PRE_COMPILED_ROM"],
             "qemu_path": os.environ.get("QEMU_PATH", ""),
+            "seed_iso": os.environ.get("SEED_ISO", ""),
             "shutdown_after_run": os.environ.get("SHUTDOWN_AFTER_RUN", "false").lower() == "true",
+            "test_apps_dir": os.environ.get("TEST_APPS_DIR", ""),
+            "timeout_seconds": int(os.environ.get("TIMEOUT_SECONDS") or 300),
         })
 
         script = os.path.join(os.environ["ACTION_PATH"], "run_qemu_validation.py")
