@@ -985,6 +985,10 @@ jobs:
       matrix:
         platform: [Q35, ArmVirt]
         target: [DEBUG, RELEASE]
+        # Temporarily disable Q35 DEBUG due to occasional failures writing test results to storage.
+        exclude:
+          - platform: Q35
+            target: DEBUG
         include:
           - platform: Q35
             fw_cache_key_suffix: q35
